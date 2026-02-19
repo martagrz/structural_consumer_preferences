@@ -14,13 +14,13 @@
     \toprule
     \textbf{Model} & \textbf{RMSE} & \textbf{MAE} \\
     \midrule
-    LA-AIDS & 0.01026 (0.00013) & 0.00697 (0.00010) \\
-    BLP (IV) & 0.06506 (0.00075) & 0.04859 (0.00040) \\
-    Lin IRL Shared & 0.15355 (0.00027) & 0.14030 (0.00030) \\
-    Lin IRL GoodSpec & 0.15472 (0.00027) & 0.14086 (0.00032) \\
-    Lin IRL Orth & 0.02463 (0.00014) & 0.01834 (0.00014) \\
-    Neural IRL & \textbf{0.00032 (0.00003)} & 0.00020 (0.00001) \\
-    Var. Mixture & 0.03800 (0.00007) & 0.03365 (0.00005) \\
+    LA-AIDS & 0.00979 (0.00010) & 0.00658 (0.00011) \\
+    BLP (IV) & 0.06312 (0.00036) & 0.04744 (0.00035) \\
+    Lin IRL Shared & 0.15411 (0.00030) & 0.14095 (0.00028) \\
+    Lin IRL GoodSpec & 0.15532 (0.00040) & 0.14154 (0.00034) \\
+    Lin IRL Orth & 0.02398 (0.00043) & 0.01776 (0.00035) \\
+    Neural IRL & \textbf{0.00029 (0.00003)} & 0.00019 (0.00001) \\
+    Var. Mixture & 0.03800 (0.00005) & 0.03373 (0.00004) \\
     \bottomrule
   \end{tabular}
   \begin{tablenotes}\small
@@ -40,14 +40,14 @@
     \toprule
     \textbf{Model} & Food $\hat{\varepsilon}_{00}$ & Fuel $\hat{\varepsilon}_{11}$ & Other $\hat{\varepsilon}_{22}$ \\
     \midrule
-    \textit{Ground Truth} & -1.437 (0.001) & -1.489 (0.001) & -1.711 (0.001) \\
-    LA-AIDS & -1.420 (0.001) & -1.485 (0.001) & -1.708 (0.006) \\
-    BLP (IV) & -1.347 (0.003) & -1.496 (0.003) & -1.000 (0.000) \\
-    Lin IRL Shared & -1.540 (0.006) & -1.639 (0.008) & -1.546 (0.009) \\
-    Lin IRL GoodSpec & -1.576 (0.006) & -1.729 (0.008) & -1.585 (0.011) \\
-    Lin IRL Orth & -1.508 (0.005) & -1.684 (0.003) & -1.845 (0.006) \\
-    Neural IRL & -1.435 (0.002) & -1.488 (0.001) & -1.711 (0.002) \\
-    Var. Mixture & -1.381 (0.001) & -1.436 (0.001) & -1.575 (0.000) \\
+    \textit{Ground Truth} & -1.438 (0.001) & -1.489 (0.001) & -1.710 (0.001) \\
+    LA-AIDS & -1.422 (0.001) & -1.487 (0.001) & -1.697 (0.003) \\
+    BLP (IV) & -1.351 (0.004) & -1.505 (0.004) & -1.000 (0.000) \\
+    Lin IRL Shared & -1.522 (0.008) & -1.613 (0.012) & -1.519 (0.013) \\
+    Lin IRL GoodSpec & -1.560 (0.007) & -1.703 (0.011) & -1.555 (0.014) \\
+    Lin IRL Orth & -1.515 (0.006) & -1.688 (0.006) & -1.838 (0.004) \\
+    Neural IRL & -1.438 (0.001) & -1.488 (0.002) & -1.711 (0.001) \\
+    Var. Mixture & -1.382 (0.001) & -1.436 (0.001) & -1.574 (0.001) \\
     \bottomrule
   \end{tabular}
   \begin{tablenotes}\small
@@ -66,14 +66,14 @@
     \toprule
     \textbf{Model} & \textbf{CS Loss (£)} & \textbf{Error (\%)} \\
     \midrule
-    \textit{Ground Truth} & £122.71 (0.37) & \text{---} \\
-    LA-AIDS & £122.16 (0.34) & 0.4 \\
-    BLP (IV) & £120.78 (0.40) & 1.6 \\
-    Lin IRL Shared & £92.67 (0.32) & 24.5 \\
-    Lin IRL GoodSpec & £92.25 (0.35) & 24.8 \\
-    Lin IRL Orth & £121.25 (0.49) & 1.2 \\
-    Neural IRL & £122.70 (0.38) & 0.0 \\
-    Var. Mixture & £114.02 (0.35) & 7.1 \\
+    \textit{Ground Truth} & £122.62 (0.29) & \text{---} \\
+    LA-AIDS & £122.09 (0.29) & 0.4 \\
+    BLP (IV) & £120.88 (0.35) & 1.4 \\
+    Lin IRL Shared & £92.54 (0.22) & 24.5 \\
+    Lin IRL GoodSpec & £92.09 (0.24) & 24.9 \\
+    Lin IRL Orth & £121.33 (0.43) & 1.1 \\
+    Neural IRL & £122.62 (0.29) & 0.0 \\
+    Var. Mixture & £113.93 (0.27) & 7.1 \\
     \bottomrule
   \end{tabular}
   \begin{tablenotes}\small
@@ -92,11 +92,11 @@
     \toprule
     \textbf{DGP} & \textbf{LA-AIDS} & \textbf{Lin IRL (Orth)} & \textbf{Neural IRL} \\
     \midrule
-    CES & 0.01026 (0.00013) & 0.02463 (0.00014) & \textbf{0.00113 (0.00016)} \\
-    Quasilinear & 0.00003 (0.00000) & 0.00905 (0.00002) & \textbf{0.00001 (0.00000)} \\
-    Leontief & 0.01912 (0.00014) & 0.02684 (0.00020) & \textbf{0.00105 (0.00014)} \\
-    Stone-Geary & 0.00577 (0.00006) & 0.00338 (0.00007) & \textbf{0.00223 (0.00007)} \\
-    Habit & 0.04848 (0.00101) & 0.04991 (0.00104) & \textbf{0.04830 (0.00115)} \\
+    CES & 0.00979 (0.00010) & 0.02398 (0.00043) & \textbf{0.00096 (0.00012)} \\
+    Quasilinear & 0.00003 (0.00000) & 0.00908 (0.00002) & \textbf{0.00001 (0.00000)} \\
+    Leontief & 0.01884 (0.00019) & 0.02658 (0.00046) & \textbf{0.00091 (0.00007)} \\
+    Stone-Geary & 0.00581 (0.00004) & 0.00330 (0.00003) & \textbf{0.00232 (0.00004)} \\
+    Habit & \textbf{0.04625 (0.00116)} & 0.04796 (0.00119) & 0.04637 (0.00117) \\
     \bottomrule
   \end{tabular}
   \begin{tablenotes}\small
@@ -115,15 +115,15 @@
     \toprule
     \textbf{Model} & \textbf{RMSE} & \textbf{KL Div.} & \textbf{RMSE reduction} \\
     \midrule
-    LA-AIDS (static) & 0.04848 (0.00101) & 0.00985 (0.00038) & baseline \\
-    Neural IRL (static MDP) & 0.04817 (0.00109) & 0.00957 (0.00042) & 0.6\% (3.1\%) \\
-    MDP Neural IRL ($\bar{x}$ state) & 0.00419 (0.00044) & 0.00008 (0.00001) & 91.4\% (0.9\%) \\
+    LA-AIDS (static) & 0.04625 (0.00116) & 0.00887 (0.00039) & baseline \\
+    Neural IRL (static MDP) & 0.04622 (0.00118) & 0.00867 (0.00039) & 0.1\% (3.6\%) \\
+    MDP Neural IRL ($\bar{x}$ state) & 0.00378 (0.00037) & 0.00006 (0.00001) & 91.8\% (0.8\%) \\
     \bottomrule
   \end{tabular}
   \begin{tablenotes}\small
     \item Mean (SE) across 5 runs. All models trained on identical habit-formation data.
     RMSE reduction relative to LA-AIDS mean; SE propagated via delta method.
-    $\hat{\beta}$: Neural IRL = 4.145 (0.042); MDP IRL = 4.191 (0.055). $\theta=0.3$, $\delta=0.7$.
+    $\hat{\beta}$: Neural IRL = 4.142 (0.071); MDP IRL = 4.179 (0.021). $\theta=0.3$, $\delta=0.7$.
   \end{tablenotes}
   \end{threeparttable}
 \end{table}
@@ -138,7 +138,7 @@
     \toprule
     $k$ & $\hat{\pi}_k$ & $\hat{\alpha}_{\text{food}}$ & $\hat{\alpha}_{\text{fuel}}$ & $\hat{\alpha}_{\text{other}}$ & $\hat{\rho}$ & Type \\
     \midrule
-    1 & 0.066 & 0.405 & 0.326 & 0.269 & 0.300 & Balanced \\
+    1 & 0.067 & 0.405 & 0.326 & 0.269 & 0.300 & Balanced \\
     2 & 0.019 & 0.226 & 0.379 & 0.395 & 0.360 & Balanced \\
     3 & 0.056 & 0.332 & 0.354 & 0.314 & 0.420 & Balanced \\
     4 & 0.812 & 0.395 & 0.385 & 0.220 & 0.481 & \textbf{Dominant} \\
@@ -164,9 +164,9 @@
     \toprule
     \textbf{Variant} & \textbf{RMSE} & \textbf{MAE} & \textbf{Feature description} \\
     \midrule
-    Shared (original) & 0.15355 (0.00027) & 0.14030 (0.00030) & Shared $[\ln p_i,(\ln p_i)^2,\ln y]$ — same profile all goods \\
-    Good-specific & 0.15472 (0.00027) & 0.14086 (0.00032) & Per-good $[\ln\mathbf{p},(\ln p_i)^2,\ln y]$ — heterogeneous response \\
-    Orth + Intercepts & \textbf{0.02463 (0.00014)} & 0.01834 (0.00014) & QR-orth.\ prices + per-good one-hot intercept — resolves collinearity \\
+    Shared (original) & 0.15411 (0.00030) & 0.14095 (0.00028) & Shared $[\ln p_i,(\ln p_i)^2,\ln y]$ — same profile all goods \\
+    Good-specific & 0.15532 (0.00040) & 0.14154 (0.00034) & Per-good $[\ln\mathbf{p},(\ln p_i)^2,\ln y]$ — heterogeneous response \\
+    Orth + Intercepts & \textbf{0.02398 (0.00043)} & 0.01776 (0.00035) & QR-orth.\ prices + per-good one-hot intercept — resolves collinearity \\
     \bottomrule
   \end{tabular}
   \begin{tablenotes}\small

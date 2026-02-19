@@ -90,12 +90,12 @@ CFG = dict(
     # Linear IRL
     lirl_lr=0.05, lirl_epochs=3000, lirl_l2=1e-4,
     # Neural IRL
-    nirl_hidden=256, nirl_epochs=3000, nirl_lr=5e-4,
+    nirl_hidden=256, nirl_epochs=5000, nirl_lr=5e-5,
     nirl_batch=512, nirl_lam_mono=0.25, nirl_lam_slut=0.10,
     nirl_slut_start=0.25,
     # MDP Neural IRL
-    mdp_hidden=256, mdp_epochs=3000, mdp_lr=5e-5,
-    mdp_batch=512, mdp_lam_mono=0.15, mdp_lam_slut=0.05,
+    mdp_hidden=256, mdp_epochs=5000, mdp_lr=5e-5,
+    mdp_batch=512, mdp_lam_mono=0.25, mdp_lam_slut=0.10,
     mdp_slut_start=0.25, habit_decay=0.70,
     # Variational Mixture
     mix_K=6, 

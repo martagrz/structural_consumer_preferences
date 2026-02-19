@@ -484,15 +484,15 @@ for lbl, st in STYLE.items():
     ax1.plot(P_GRID, mu, label=lbl, **st)
     ax1.fill_between(P_GRID, mu-sigma, mu+sigma,
                      color=st["color"], alpha=BAND)
-ax1.axvline(shock_pt_mean, color="orange", ls=":", lw=1.5, alpha=0.9, label="Shock point")
-ax1.set_title(
-    f"Food Share Response to Fuel Price — CES Ground Truth\n"
-    f"Mean $\\pm$ 1 SE over {N_RUNS} independent runs",
-    fontsize=12, fontweight="bold")
-ax1.set_xlabel("Fuel price ($p_1$)", fontsize=11)
-ax1.set_ylabel("Food budget share ($w_0$)", fontsize=11)
-ax1.legend(fontsize=9, ncol=2, loc="upper left")
-ax1.grid(True, alpha=0.3)
+# ax1.axvline(shock_pt_mean, color="orange", ls=":", lw=1.5, alpha=0.9, label="Shock point")
+# ax1.set_title(
+#     f"Food Share Response to Fuel Price — CES Ground Truth\n"
+#     f"Mean $\\pm$ 1 SE over {N_RUNS} independent runs",
+#     fontsize=12, fontweight="bold")
+ax1.set_xlabel("Fuel price ($p_1$)", fontsize=14)
+ax1.set_ylabel("Food budget share ($w_0$)", fontsize=14)
+ax1.legend(fontsize=14, ncol=2, loc="upper left")
+ax1.grid(False, alpha=0.3)
 fig1.tight_layout()
 fig1.savefig("figures/fig1_demand_curves.pdf", dpi=150, bbox_inches="tight")
 fig1.savefig("figures/fig1_demand_curves.png", dpi=150, bbox_inches="tight")
@@ -506,130 +506,201 @@ MDP_STYLE = {
     "MDP-IRL":           ("#00897B", "-",    2.5, r"MDP-IRL (with $\bar{x}$)"),
 }
 good_names = ["Food", "Fuel", "Other"]
-fig2, axes2 = plt.subplots(1, 3, figsize=(17, 5))
-for gi, (gn, ax) in enumerate(zip(good_names, axes2)):
-    for key, (col,ls,lw,lbl) in MDP_STYLE.items():
-        mu    = mdp_mean[key][:,gi]
-        sigma = mdp_se[key][:,gi]
+
+# Loop through each good to create a unique figure
+for gi, gn in enumerate(good_names):
+    # Create a new figure for each 'good'
+    fig, ax = plt.subplots(figsize=(7, 5))
+    
+    for key, (col, ls, lw, lbl) in MDP_STYLE.items():
+        mu    = mdp_mean[key][:, gi]
+        sigma = mdp_se[key][:, gi]
+        
         ax.plot(P_GRID, mu, color=col, ls=ls, lw=lw, label=lbl)
-        ax.fill_between(P_GRID, mu-sigma, mu+sigma, color=col, alpha=BAND)
-    ax.axvline(shock_pt_mean, color="orange", ls=":", lw=1.5, alpha=0.8)
-    ax.set_title(f"{gn} Share (Habit DGP)", fontsize=11, fontweight="bold")
-    ax.set_xlabel("Fuel price", fontsize=10)
-    ax.set_ylabel(f"{gn} budget share", fontsize=10)
-    ax.legend(fontsize=8); ax.grid(True, alpha=0.3)
-fig2.suptitle(
-    f"MDP-Aware Neural IRL vs Static Models — Habit Formation DGP\n"
-    f"Mean $\\pm$ 1 SE over {N_RUNS} runs",
-    fontsize=12, fontweight="bold")
-fig2.tight_layout()
-fig2.savefig("figures/fig2_mdp_advantage.pdf", dpi=150, bbox_inches="tight")
-fig2.savefig("figures/fig2_mdp_advantage.png", dpi=150, bbox_inches="tight")
-print("    Saved: figures/fig2_mdp_advantage.pdf")
+        ax.fill_between(P_GRID, mu - sigma, mu + sigma, color=col, alpha=BAND)
+    
+    # Add the vertical shock line
+    # ax.axvline(shock_pt_mean, color="orange", ls=":", lw=1.5, alpha=0.8)
+    
+    # Formatting
+    ax.set_xlabel("Fuel price", fontsize=14)
+    ax.set_ylabel(f"{gn} budget share", fontsize=14)
+    ax.set_title(f"{gn} Share (Habit DGP)", fontsize=14, fontweight="bold")
+    
+    # Optimized legend for standalone plot
+    ax.legend(fontsize=10, loc='best')
+    ax.grid(True, alpha=0.2)
+    
+    fig.tight_layout()
+    
+    # Save with specific names
+    file_base = f"figures/fig2_{gn.lower()}_advantage"
+    fig.savefig(f"{file_base}.pdf", dpi=150, bbox_inches="tight")
+    fig.savefig(f"{file_base}.png", dpi=150, bbox_inches="tight")
+    
+    print(f"    Saved: {file_base}.pdf")
+
+# Optional: close plots to free up memory
+plt.close('all')
 
 # ── Figure 3: Convergence (last/representative run) ───────────────
-fig3, axes3 = plt.subplots(1, 2, figsize=(14, 5))
-for ax, hist, col_kl, col_b, title in [
-    (axes3[0], last["hist_nirl"], "#1E88E5", "#E53935", "Neural IRL (CES DGP)"),
-    (axes3[1], last["hist_mdp"],  "#43A047", "#8E24AA", "MDP Neural IRL (Habit DGP)"),
-]:
-    if hist:
-        ep_x = [h["epoch"] for h in hist]
-        kl_y = [h["kl"]    for h in hist]
-        bt_y = [h["beta"]  for h in hist]
-        ax2  = ax.twinx()
-        ax.plot(ep_x, kl_y,  "o-",  ms=5, color=col_kl, label="KL Loss")
-        ax2.plot(ep_x, bt_y, "s--", ms=5, color=col_b,  label="β (learned)")
-        ax.set_xlabel("Epoch"); ax.set_ylabel("KL Divergence", color=col_kl)
-        ax2.set_ylabel("Temperature β", color=col_b)
-        ax.set_title(f"{title}\n(representative last run)",
-                     fontsize=11, fontweight="bold")
-        l1,n1 = ax.get_legend_handles_labels()
-        l2,n2 = ax2.get_legend_handles_labels()
-        ax.legend(l1+l2, n1+n2, fontsize=9); ax.grid(True, alpha=0.3)
-fig3.suptitle("Training Convergence: Learnable Temperature β",
-              fontsize=12, fontweight="bold")
-fig3.tight_layout()
-fig3.savefig("figures/fig3_convergence.pdf", dpi=150, bbox_inches="tight")
-fig3.savefig("figures/fig3_convergence.png", dpi=150, bbox_inches="tight")
-print("    Saved: figures/fig3_convergence.pdf")
+# Configuration for the two separate figures
+configs = [
+    ("3a", last["hist_nirl"], "#1E88E5", "#E53935", "Neural IRL (CES DGP)"),
+    ("3b", last["hist_mdp"],  "#43A047", "#8E24AA", "MDP Neural IRL (Habit DGP)")
+]
+
+for suffix, hist, col_kl, col_b, title in configs:
+    if not hist:
+        continue
+        
+    # Create a fresh figure for each run
+    fig, ax = plt.subplots(figsize=(7, 5))
+    
+    ep_x = [h["epoch"] for h in hist]
+    kl_y = [h["kl"]    for h in hist]
+    bt_y = [h["beta"]  for h in hist]
+    
+    # Dual axis setup
+    ax2 = ax.twinx()
+    ax.plot(ep_x, kl_y,  "o-",  ms=5, color=col_kl, label="KL Loss")
+    ax2.plot(ep_x, bt_y, "s--", ms=5, color=col_b,  label="β (learned)")
+    
+    # Formatting
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("KL Divergence", color=col_kl)
+    ax2.set_ylabel("Temperature β", color=col_b)
+    
+    # Maintain original limits
+    ax.set_ylim([0, 0.003])
+    ax2.set_ylim([0, 0.003])
+    
+    # Optional: Restore title if needed for separate plots
+    # ax.set_title(title, fontsize=14, fontweight="bold")
+    
+    # Legend handling
+    l1, n1 = ax.get_legend_handles_labels()
+    l2, n2 = ax2.get_legend_handles_labels()
+    ax.legend(l1 + l2, n1 + n2, loc='upper right', fontsize=12)
+    
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    
+    # Save with unique filenames
+    file_base = f"figures/fig{suffix}_convergence"
+    fig.savefig(f"{file_base}.pdf", dpi=150, bbox_inches="tight")
+    fig.savefig(f"{file_base}.png", dpi=150, bbox_inches="tight")
+    print(f"    Saved: {file_base}.pdf")
 
 # ── Figure 4: Robustness — heatmap (mean) + bar chart (mean±SE) ──
-fig4, (ax4l, ax4r) = plt.subplots(1, 2, figsize=(15, 5))
-
-# Left: heatmap of mean RMSE, cells annotated "mean\n(SE)"
+# ── Setup Data ──────────────────────────────────────────────────
 mean_mat = np.array([[rob_agg[dg][col]["mean"] for col in col_names] for dg in dgp_names])
 se_mat   = np.array([[rob_agg[dg][col]["se"]   for col in col_names] for dg in dgp_names])
-im = ax4l.imshow(mean_mat, cmap="RdYlGn_r", aspect="auto", vmin=0, vmax=0.15)
-ax4l.set_xticks(range(len(col_names)));  ax4l.set_xticklabels(col_names,   fontsize=10)
-ax4l.set_yticks(range(len(dgp_names))); ax4l.set_yticklabels(dgp_names, fontsize=10)
-plt.colorbar(im, ax=ax4l, label="Mean RMSE")
-for i,dg in enumerate(dgp_names):
-    for j,col in enumerate(col_names):
-        mv = mean_mat[i,j]; sv = se_mat[i,j]
-        c  = "white" if mv > 0.08 else "black"
-        ax4l.text(j, i, f"{mv:.4f}\n({sv:.4f})",
-                  ha="center", va="center", fontsize=8, color=c)
-ax4l.set_title(f"Mean Post-Shock RMSE Across DGPs\n(SE in parentheses, {N_RUNS} runs)",
-               fontsize=11, fontweight="bold")
-
-# Right: grouped bar chart with ±1 SE error bars
-x   = np.arange(len(dgp_names)); W = 0.25
+x        = np.arange(len(dgp_names))
+W        = 0.25
 bar_colors = ["#E57373", "#64B5F6", "#81C784"]
+
+# ── Figure 4a: Heatmap of Mean RMSE ──────────────────────────────
+fig4a, ax4a = plt.subplots(figsize=(8, 6))
+
+im = ax4a.imshow(mean_mat, cmap="RdYlGn_r", aspect="auto", vmin=0, vmax=0.15)
+ax4a.set_xticks(range(len(col_names)))
+ax4a.set_xticklabels(col_names, fontsize=14)
+ax4a.set_yticks(range(len(dgp_names)))
+ax4a.set_yticklabels(dgp_names, fontsize=14)
+
+plt.colorbar(im, ax=ax4a, label="Mean RMSE")
+
+# Annotate cells with "mean (SE)"
+for i, dg in enumerate(dgp_names):
+    for j, col in enumerate(col_names):
+        mv = mean_mat[i, j]
+        sv = se_mat[i, j]
+        # Dynamic text color for readability
+        text_color = "white" if mv > 0.08 else "black"
+        ax4a.text(j, i, f"{mv:.4f}\n({sv:.4f})",
+                  ha="center", va="center", fontsize=12, color=text_color)
+
+fig4a.tight_layout()
+fig4a.savefig("figures/fig4a_robustness_heatmap.pdf", dpi=150, bbox_inches="tight")
+fig4a.savefig("figures/fig4a_robustness_heatmap.png", dpi=150, bbox_inches="tight")
+print("    Saved: figures/fig4a_robustness_heatmap.pdf")
+
+
+# ── Figure 4b: Grouped Bar Chart with Error Bars ────────────────
+fig4b, ax4b = plt.subplots(figsize=(9, 6))
+
 for j_off, col, bc in zip([-1, 0, 1], col_names, bar_colors):
     means  = [rob_agg[dg][col]["mean"] for dg in dgp_names]
     errors = [rob_agg[dg][col]["se"]   for dg in dgp_names]
-    ax4r.bar(x+j_off*W, means, W, yerr=errors, label=col, color=bc,
+    ax4b.bar(x + j_off * W, means, W, yerr=errors, label=col, color=bc,
              capsize=4, alpha=0.85, ecolor="k", error_kw=dict(lw=1.5))
-ax4r.set_xticks(x); ax4r.set_xticklabels(dgp_names, rotation=20, ha="right", fontsize=9)
-ax4r.set_ylabel("Post-shock RMSE")
-ax4r.set_title(f"Mean $\\pm$ 1 SE per DGP ({N_RUNS} runs)",
-               fontsize=11, fontweight="bold")
-ax4r.legend(fontsize=9); ax4r.grid(True, alpha=0.3, axis="y")
-fig4.tight_layout()
-fig4.savefig("figures/fig4_robustness_heatmap.pdf", dpi=150, bbox_inches="tight")
-fig4.savefig("figures/fig4_robustness_heatmap.png", dpi=150, bbox_inches="tight")
-print("    Saved: figures/fig4_robustness_heatmap.pdf")
+
+ax4b.set_xticks(x)
+ax4b.set_xticklabels(dgp_names, rotation=20, ha="right", fontsize=14)
+ax4b.set_ylabel("Post-shock RMSE", fontsize=14)
+ax4b.legend(fontsize=12, loc='upper left')
+ax4b.grid(True, alpha=0.3, axis="y")
+
+fig4b.tight_layout()
+fig4b.savefig("figures/fig4b_robustness_bars.pdf", dpi=150, bbox_inches="tight")
+fig4b.savefig("figures/fig4b_robustness_bars.png", dpi=150, bbox_inches="tight")
+print("    Saved: figures/fig4b_robustness_bars.pdf")
+
+plt.close("all")
 
 # ── Figure 5: Variational Mixture (last run) ───────────────────────
 comp_df = last["comp_summary"]
 x_pos   = np.arange(len(comp_df))
 tab10   = plt.cm.tab10(x_pos / len(comp_df))
-fig5, (ax5l, ax5r) = plt.subplots(1, 2, figsize=(14, 5))
 
-bars = ax5l.bar(x_pos, comp_df["pi"], color=tab10, alpha=0.85, edgecolor="k")
+# ── Figure 5a: Mixture Weights (Bar Chart) ──────────────────────
+fig5a, ax5a = plt.subplots(figsize=(8, 5))
+
+bars = ax5a.bar(x_pos, comp_df["pi"], color=tab10, alpha=0.85, edgecolor="k")
 for bar, row in zip(bars, comp_df.itertuples()):
     if row.pi > 0.02:
-        ax5l.text(bar.get_x()+bar.get_width()/2, bar.get_height()+0.005,
-                  f"ρ={row.rho:.2f}", ha="center", va="bottom", fontsize=8)
-ax5l.set_xticks(x_pos)
-ax5l.set_xticklabels(
+        ax5a.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.005,
+                  f"ρ={row.rho:.2f}", ha="center", va="bottom", fontsize=12)
+
+ax5a.set_xticks(x_pos)
+ax5a.set_xticklabels(
     [f"K={k+1}\nα=[{r.alpha_food:.2f},{r.alpha_fuel:.2f},{r.alpha_other:.2f}]"
-     for k,r in enumerate(comp_df.itertuples())], fontsize=7, rotation=15)
-ax5l.set_title("Variational Mixture: Component Weights $\\hat{\\pi}_k$\n"
-               "(representative last run)", fontsize=11, fontweight="bold")
-ax5l.set_ylabel("Mixture weight $\\hat{\\pi}_k$"); ax5l.set_ylim(0,1)
-ax5l.axhline(1/6, color="gray", ls="--", alpha=0.5, label="Uniform prior")
-ax5l.legend(fontsize=9); ax5l.grid(True, alpha=0.3, axis="y")
+     for k, r in enumerate(comp_df.itertuples())], fontsize=11, rotation=15)
+
+ax5a.set_ylabel("Mixture weight $\\hat{\\pi}_k$", fontsize=14)
+ax5a.set_ylim(0, 1)
+ax5a.axhline(1/6, color="gray", ls="--", alpha=0.5, label="Uniform prior")
+ax5a.legend(fontsize=10)
+ax5a.grid(False, alpha=0.3, axis="y")
+
+fig5a.tight_layout()
+fig5a.savefig("figures/fig5a_mixture_weights.pdf", dpi=150, bbox_inches="tight")
+fig5a.savefig("figures/fig5a_mixture_weights.png", dpi=150, bbox_inches="tight")
+print("    Saved: figures/fig5a_mixture_weights.pdf")
+
+
+# ── Figure 5b: Component Centres (Scatter Plot) ────────────────
+fig5b, ax5b = plt.subplots(figsize=(7, 6))
 
 for k, row in enumerate(comp_df.itertuples()):
-    ax5r.scatter(row.alpha_food, row.alpha_fuel,
+    ax5b.scatter(row.alpha_food, row.alpha_fuel,
                  s=row.pi*2000+20, alpha=0.75, c=[tab10[k]],
                  edgecolors="k", linewidths=0.5,
                  label=f"K={k+1} (ρ={row.rho:.2f})")
-ax5r.scatter([0.4],[0.4], s=300, marker="*", color="red", zorder=5, label="True α")
-ax5r.set_xlabel("$\\hat{\\alpha}_{\\mathrm{food}}$", fontsize=11)
-ax5r.set_ylabel("$\\hat{\\alpha}_{\\mathrm{fuel}}$", fontsize=11)
-ax5r.set_title("Component Centres in $(\\hat{\\alpha}_{\\mathrm{food}},\\hat{\\alpha}_{\\mathrm{fuel}})$ Space\n"
-               "(size $\\propto \\hat{\\pi}_k$)", fontsize=11, fontweight="bold")
-ax5r.legend(fontsize=8); ax5r.grid(True, alpha=0.3)
-ax5r.set_xlim(0,0.9); ax5r.set_ylim(0,0.9)
-fig5.suptitle("Continuous Variational Mixture IRL (K=6)\nWider Type Grid vs Discrete EM",
-              fontsize=12, fontweight="bold")
-fig5.tight_layout()
-fig5.savefig("figures/fig5_mixture_components.pdf", dpi=150, bbox_inches="tight")
-fig5.savefig("figures/fig5_mixture_components.png", dpi=150, bbox_inches="tight")
-print("    Saved: figures/fig5_mixture_components.pdf")
+
+ax5b.scatter([0.4], [0.4], s=300, marker="*", color="red", zorder=5, label="True α")
+ax5b.set_xlabel("$\\hat{\\alpha}_{\\mathrm{food}}$", fontsize=14)
+ax5b.set_ylabel("$\\hat{\\alpha}_{\\mathrm{fuel}}$", fontsize=14)
+ax5b.set_xlim(0, 0.9)
+ax5b.set_ylim(0, 0.9)
+ax5b.legend(fontsize=11, bbox_to_anchor=(1.05, 1), loc='upper left') # Moved legend outside for clarity
+ax5b.grid(False, alpha=0.3)
+
+fig5b.tight_layout()
+fig5b.savefig("figures/fig5b_mixture_centers.pdf", dpi=150, bbox_inches="tight")
+fig5b.savefig("figures/fig5b_mixture_centers.png", dpi=150, bbox_inches="tight")
+print("    Saved: figures/fig5b_mixture_centers.pdf")
 
 plt.close("all")
 
