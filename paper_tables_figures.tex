@@ -1,0 +1,233 @@
+% ============================================================
+% AUTO-GENERATED LaTeX — IRL Consumer Demand Recovery
+% N_RUNS = 5, N = 800 per run.  All cells: mean (SE).
+% Required: booktabs, threeparttable, graphicx, amsmath
+% ============================================================
+
+% --- TABLE 1: Predictive Accuracy ---
+\begin{table}[htbp]
+  \centering
+  \caption{Post-Shock Predictive Accuracy: CES Ground Truth, 20\% Fuel Price Shock. Mean (SE) across 5 runs.}
+  \label{tab:accuracy}
+  \begin{threeparttable}
+  \begin{tabular}{lcc}
+    \toprule
+    \textbf{Model} & \textbf{RMSE} & \textbf{MAE} \\
+    \midrule
+    LA-AIDS & 0.01026 (0.00013) & 0.00697 (0.00010) \\
+    BLP (IV) & 0.06506 (0.00075) & 0.04859 (0.00040) \\
+    Lin IRL Shared & 0.15355 (0.00027) & 0.14030 (0.00030) \\
+    Lin IRL GoodSpec & 0.15472 (0.00027) & 0.14086 (0.00032) \\
+    Lin IRL Orth & 0.02463 (0.00014) & 0.01834 (0.00014) \\
+    Neural IRL & \textbf{0.00032 (0.00003)} & 0.00020 (0.00001) \\
+    Var. Mixture & 0.03800 (0.00007) & 0.03365 (0.00005) \\
+    \bottomrule
+  \end{tabular}
+  \begin{tablenotes}\small
+    \item Mean (SE) across 5 independent draws of $(p,y)$ with $N=800$ each.
+    Shock: $p_1\to 1.2\,p_1$. SE $=\hat{\sigma}/\sqrt{n_{\text{runs}}}$. Bold = lowest mean RMSE.
+  \end{tablenotes}
+  \end{threeparttable}
+\end{table}
+
+% --- TABLE 2: Own-Price Elasticities ---
+\begin{table}[htbp]
+  \centering
+  \caption{Recovered Own-Price Elasticities $\hat{\varepsilon}_{ii}$ at Shock Point. Mean (SE).}
+  \label{tab:elasticities}
+  \begin{threeparttable}
+  \begin{tabular}{lccc}
+    \toprule
+    \textbf{Model} & Food $\hat{\varepsilon}_{00}$ & Fuel $\hat{\varepsilon}_{11}$ & Other $\hat{\varepsilon}_{22}$ \\
+    \midrule
+    \textit{Ground Truth} & -1.437 (0.001) & -1.489 (0.001) & -1.711 (0.001) \\
+    LA-AIDS & -1.420 (0.001) & -1.485 (0.001) & -1.708 (0.006) \\
+    BLP (IV) & -1.347 (0.003) & -1.496 (0.003) & -1.000 (0.000) \\
+    Lin IRL Shared & -1.540 (0.006) & -1.639 (0.008) & -1.546 (0.009) \\
+    Lin IRL GoodSpec & -1.576 (0.006) & -1.729 (0.008) & -1.585 (0.011) \\
+    Lin IRL Orth & -1.508 (0.005) & -1.684 (0.003) & -1.845 (0.006) \\
+    Neural IRL & -1.435 (0.002) & -1.488 (0.001) & -1.711 (0.002) \\
+    Var. Mixture & -1.381 (0.001) & -1.436 (0.001) & -1.575 (0.000) \\
+    \bottomrule
+  \end{tabular}
+  \begin{tablenotes}\small
+    \item Mean (SE) across 5 runs. Numerical elasticities at mean post-shock prices, $y=\pounds 1{,}600$.
+  \end{tablenotes}
+  \end{threeparttable}
+\end{table}
+
+% --- TABLE 3: Welfare ---
+\begin{table}[htbp]
+  \centering
+  \caption{Compensating Variation: CS Loss from 20\% Fuel Price Shock. Mean (SE).}
+  \label{tab:welfare}
+  \begin{threeparttable}
+  \begin{tabular}{lcc}
+    \toprule
+    \textbf{Model} & \textbf{CS Loss (£)} & \textbf{Error (\%)} \\
+    \midrule
+    \textit{Ground Truth} & £122.71 (0.37) & \text{---} \\
+    LA-AIDS & £122.16 (0.34) & 0.4 \\
+    BLP (IV) & £120.78 (0.40) & 1.6 \\
+    Lin IRL Shared & £92.67 (0.32) & 24.5 \\
+    Lin IRL GoodSpec & £92.25 (0.35) & 24.8 \\
+    Lin IRL Orth & £121.25 (0.49) & 1.2 \\
+    Neural IRL & £122.70 (0.38) & 0.0 \\
+    Var. Mixture & £114.02 (0.35) & 7.1 \\
+    \bottomrule
+  \end{tabular}
+  \begin{tablenotes}\small
+    \item Mean (SE) across 5 runs. CV via 100-step Riemann integration. Error: \% deviation from Ground Truth mean.
+  \end{tablenotes}
+  \end{threeparttable}
+\end{table}
+
+% --- TABLE 4: Robustness Across DGPs ---
+\begin{table}[htbp]
+  \centering
+  \caption{Out-of-Sample RMSE Across Utility DGPs (Post-Shock). Mean (SE).}
+  \label{tab:robustness}
+  \begin{threeparttable}
+  \begin{tabular}{lccc}
+    \toprule
+    \textbf{DGP} & \textbf{LA-AIDS} & \textbf{Lin IRL (Orth)} & \textbf{Neural IRL} \\
+    \midrule
+    CES & 0.01026 (0.00013) & 0.02463 (0.00014) & \textbf{0.00113 (0.00016)} \\
+    Quasilinear & 0.00003 (0.00000) & 0.00905 (0.00002) & \textbf{0.00001 (0.00000)} \\
+    Leontief & 0.01912 (0.00014) & 0.02684 (0.00020) & \textbf{0.00105 (0.00014)} \\
+    Stone-Geary & 0.00577 (0.00006) & 0.00338 (0.00007) & \textbf{0.00223 (0.00007)} \\
+    Habit & 0.04848 (0.00101) & 0.04991 (0.00104) & \textbf{0.04830 (0.00115)} \\
+    \bottomrule
+  \end{tabular}
+  \begin{tablenotes}\small
+    \item Mean (SE) across 5 runs. Models re-trained per DGP. Bold = lowest mean RMSE per row.
+  \end{tablenotes}
+  \end{threeparttable}
+\end{table}
+
+% --- TABLE 5: MDP Advantage ---
+\begin{table}[htbp]
+  \centering
+  \caption{MDP State Augmentation: Habit Formation Experiment. Mean (SE).}
+  \label{tab:mdp_advantage}
+  \begin{threeparttable}
+  \begin{tabular}{lccl}
+    \toprule
+    \textbf{Model} & \textbf{RMSE} & \textbf{KL Div.} & \textbf{RMSE reduction} \\
+    \midrule
+    LA-AIDS (static) & 0.04848 (0.00101) & 0.00985 (0.00038) & baseline \\
+    Neural IRL (static MDP) & 0.04817 (0.00109) & 0.00957 (0.00042) & 0.6\% (3.1\%) \\
+    MDP Neural IRL ($\bar{x}$ state) & 0.00419 (0.00044) & 0.00008 (0.00001) & 91.4\% (0.9\%) \\
+    \bottomrule
+  \end{tabular}
+  \begin{tablenotes}\small
+    \item Mean (SE) across 5 runs. All models trained on identical habit-formation data.
+    RMSE reduction relative to LA-AIDS mean; SE propagated via delta method.
+    $\hat{\beta}$: Neural IRL = 4.145 (0.042); MDP IRL = 4.191 (0.055). $\theta=0.3$, $\delta=0.7$.
+  \end{tablenotes}
+  \end{threeparttable}
+\end{table}
+
+% --- TABLE 6: Variational Mixture Components (representative last run) ---
+\begin{table}[htbp]
+  \centering
+  \caption{Continuous Variational Mixture IRL: Recovered Parameters ($K=6$, representative run). Component parameters vary across runs; dominant component consistently recovers ground truth.}
+  \label{tab:mixture}
+  \begin{threeparttable}
+  \begin{tabular}{ccccccc}
+    \toprule
+    $k$ & $\hat{\pi}_k$ & $\hat{\alpha}_{\text{food}}$ & $\hat{\alpha}_{\text{fuel}}$ & $\hat{\alpha}_{\text{other}}$ & $\hat{\rho}$ & Type \\
+    \midrule
+    1 & 0.066 & 0.405 & 0.326 & 0.269 & 0.300 & Balanced \\
+    2 & 0.019 & 0.226 & 0.379 & 0.395 & 0.360 & Balanced \\
+    3 & 0.056 & 0.332 & 0.354 & 0.314 & 0.420 & Balanced \\
+    4 & 0.812 & 0.395 & 0.385 & 0.220 & 0.481 & \textbf{Dominant} \\
+    5 & 0.020 & 0.396 & 0.235 & 0.369 & 0.540 & Balanced \\
+    6 & 0.027 & 0.266 & 0.400 & 0.334 & 0.600 & Balanced \\
+    \midrule
+    \textit{Truth} & --- & 0.400 & 0.400 & 0.200 & 0.450 & --- \\
+    \bottomrule
+  \end{tabular}
+  \begin{tablenotes}\small
+    \item Gaussian mixture in $(\alpha,\rho)$ CES parameter space; variational EM on $N=300$ obs. $\alpha$ via softmax; $\rho$ via sigmoid.
+  \end{tablenotes}
+  \end{threeparttable}
+\end{table}
+
+% --- TABLE 7: Linear IRL Feature Ablation ---
+\begin{table}[htbp]
+  \centering
+  \caption{Linear MaxEnt IRL Feature Ablation. Mean (SE).}
+  \label{tab:linear_ablation}
+  \begin{threeparttable}
+  \begin{tabular}{lccp{6cm}}
+    \toprule
+    \textbf{Variant} & \textbf{RMSE} & \textbf{MAE} & \textbf{Feature description} \\
+    \midrule
+    Shared (original) & 0.15355 (0.00027) & 0.14030 (0.00030) & Shared $[\ln p_i,(\ln p_i)^2,\ln y]$ — same profile all goods \\
+    Good-specific & 0.15472 (0.00027) & 0.14086 (0.00032) & Per-good $[\ln\mathbf{p},(\ln p_i)^2,\ln y]$ — heterogeneous response \\
+    Orth + Intercepts & \textbf{0.02463 (0.00014)} & 0.01834 (0.00014) & QR-orth.\ prices + per-good one-hot intercept — resolves collinearity \\
+    \bottomrule
+  \end{tabular}
+  \begin{tablenotes}\small
+    \item Mean (SE) across 5 runs. 3{,}000 gradient-ascent epochs, $\ell_2=10^{-4}$, $\eta_t=0.05/(1+t/1000)$. Bold = lowest mean RMSE.
+  \end{tablenotes}
+  \end{threeparttable}
+\end{table}
+
+% ============================================================
+% FIGURE INCLUSION BLOCKS
+% ============================================================
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{figures/fig1_demand_curves.pdf}
+  \caption{Food Budget Share vs Fuel Price — CES Ground Truth}
+  \label{fig:demand_curves}
+  \begin{figurenotes}
+    Mean predicted share (line) $\pm 1$ SE (shaded band) across 5 runs. Neural IRL (blue) tracks the ground truth most closely. Shared Lin IRL collapses under price collinearity; the Orthogonalised variant recovers the monotone response. Shock point (orange dotted) marks the 20\% fuel price increase.
+  \end{figurenotes}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{figures/fig2_mdp_advantage.pdf}
+  \caption{MDP Neural IRL vs Static Models — Habit Formation DGP, All Three Goods}
+  \label{fig:mdp_advantage}
+  \begin{figurenotes}
+    Mean $\pm 1$ SE across 5 runs. The MDP-IRL (teal), which receives the lagged habit stock $\bar{x}_t$ in its state vector, tracks all three ground-truth curves most closely. The gap is largest for the Food share.
+  \end{figurenotes}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{figures/fig3_convergence.pdf}
+  \caption{Training Convergence: KL Loss and Learnable Temperature $\hat{\beta}$ (last run)}
+  \label{fig:convergence}
+  \begin{figurenotes}
+    Left: Neural IRL on CES data. Right: MDP Neural IRL on Habit data. $\hat{\beta}$ stabilises rapidly, providing a data-driven rationality estimate.
+  \end{figurenotes}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{figures/fig4_robustness_heatmap.pdf}
+  \caption{Robustness: Post-Shock RMSE Across DGPs — Mean and $\pm 1$ SE (5 runs)}
+  \label{fig:robustness}
+  \begin{figurenotes}
+    Left: heatmap of mean RMSE (SE in parentheses). Right: grouped bar chart with $\pm 1$ SE error bars. Neural IRL dominates across all smooth DGPs; the MDP advantage on Habit data only materialises when $\bar{x}$ enters the state (Table~\ref{tab:mdp_advantage}).
+  \end{figurenotes}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{figures/fig5_mixture_components.pdf}
+  \caption{Continuous Variational Mixture IRL: Weights and Parameter Space ($K=6$, last run)}
+  \label{fig:mixture}
+  \begin{figurenotes}
+    Left: mixture weights $\hat{\pi}_k$ with $\hat{\rho}$ annotated. Right: component centres in $(\hat{\alpha}_{\mathrm{food}},\hat{\alpha}_{\mathrm{fuel}})$ space; size $\propto\hat{\pi}_k$; red star = true $\alpha$.
+  \end{figurenotes}
+\end{figure}
+
+% REQUIRED PREAMBLE:
+% \usepackage{booktabs, threeparttable, graphicx, amsmath}
+% \newenvironment{figurenotes}{\par\small\textit{Notes:~}}{\par}

@@ -1,0 +1,9 @@
+Model,CV_Loss_mean,CV_Loss_std,n_runs
+LA-AIDS,-34.870961,0.0,5
+BLP (IV),-28.073642,0.0,5
+Lin IRL Shared,-42.157289,0.0,5
+Lin IRL GoodSpec,-42.172139,0.0,5
+Lin IRL Orth,-31.018429,0.0,5
+Neural IRL,-34.880764,0.213573,5
+MDP Neural IRL,-40.939644,0.296588,5
+Var. Mixture,-30.31352,2.889609,5
