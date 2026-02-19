@@ -58,9 +58,21 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import torch
-import torch.nn as nn
-import torch.optim as optim
 from sklearn.metrics import mean_squared_error, mean_absolute_error
+from src.models.dominicks import (
+    LAAIDS,
+    BLPLogitIV,
+    NeuralIRL,
+    MDPNeuralIRL,
+    VarMixture,
+    _train,
+    feat_good_specific,
+    feat_orth,
+    feat_shared,
+    hausman_iv,
+    pred_lirl,
+    run_lirl,
+)
 warnings.filterwarnings('ignore')
 
 np.random.seed(42)
@@ -78,12 +90,12 @@ CFG = dict(
     # Linear IRL
     lirl_lr=0.05, lirl_epochs=3000, lirl_l2=1e-4,
     # Neural IRL
-    nirl_hidden=256, nirl_epochs=1000, nirl_lr=5e-5,        # halve the LR
-    nirl_batch=512, nirl_lam_mono=0.15, nirl_lam_slut=0.05,
+    nirl_hidden=256, nirl_epochs=3000, nirl_lr=5e-4,
+    nirl_batch=512, nirl_lam_mono=0.25, nirl_lam_slut=0.10,
     nirl_slut_start=0.25,
     # MDP Neural IRL
-    mdp_hidden=256, mdp_epochs=1000, mdp_lr=5e-5,
-    mdp_batch=512, mdp_lam_mono=0.25, mdp_lam_slut=0.10,
+    mdp_hidden=256, mdp_epochs=3000, mdp_lr=5e-5,
+    mdp_batch=512, mdp_lam_mono=0.15, mdp_lam_slut=0.05,
     mdp_slut_start=0.25, habit_decay=0.70,
     # Variational Mixture
     mix_K=6, 
@@ -351,381 +363,8 @@ def build_arrays(panel: pd.DataFrame) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  SECTION 2  BENCHMARK MODELS
+#  SECTION 2-6  MODEL OBJECTS (moved to src/dominicks/models.py)
 # ─────────────────────────────────────────────────────────────────────────────
-
-class LAAIDS:
-    """Linear Approximate AIDS with Stone price index, estimated by OLS."""
-    name = 'LA-AIDS'
-
-    def fit(self, p, w, y):
-        lp  = np.log(np.maximum(p, 1e-8))
-        lPs = (w * lp).sum(1, keepdims=True)
-        ly  = np.log(np.maximum(y, 1e-8)).reshape(-1,1) - lPs
-        X   = np.c_[np.ones(len(y)), lp, ly.squeeze()]
-        self.coef_ = np.linalg.lstsq(X, w, rcond=None)[0]
-        return self
-
-    def predict(self, p, y):
-        lp = np.log(np.maximum(p, 1e-8))
-        lP = (np.full((len(p), G), 1./G) * lp).sum(1, keepdims=True)
-        ly = np.log(np.maximum(y, 1e-8)).reshape(-1,1) - lP
-        w  = np.clip(np.c_[np.ones(len(p)), lp, ly.squeeze()] @ self.coef_,
-                     1e-6, 1.0)
-        return w / w.sum(1, keepdims=True)
-
-
-class BLPLogitIV:
-    """BLP logit with Hausman IV. Last good is outside option."""
-    name = 'BLP (IV)'
-
-    def fit(self, p, w, Z):
-        y   = np.log(np.maximum(w[:,:-1], 1e-8) /
-                     np.maximum(w[:,-1:],  1e-8))
-        Zr  = Z[:,:-1]
-        Ph  = Zr @ np.linalg.lstsq(Zr, p[:,:-1], rcond=None)[0]
-        self.beta_ = np.linalg.lstsq(Ph, y, rcond=None)[0]
-        return self
-
-    def predict(self, p):
-        lgt = np.clip(p[:,:-1] @ self.beta_, -30, 30)
-        eu  = np.exp(lgt)
-        d   = 1.0 + eu.sum(1, keepdims=True)
-        return np.c_[eu/d, 1.0/d]
-
-
-def hausman_iv(prices, stores, weeks):
-    """Mean price of same good across other stores in same week."""
-    Z = np.zeros_like(prices)
-    for j in range(G):
-        for i, (s, wk) in enumerate(zip(stores, weeks)):
-            mask   = (stores != s) & (weeks == wk)
-            Z[i,j] = prices[mask,j].mean() if mask.sum() else prices[:,j].mean()
-    return Z
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  SECTION 3  LINEAR IRL (THREE FEATURE VARIANTS)
-# ─────────────────────────────────────────────────────────────────────────────
-
-def feat_shared(p, y):
-    """[ln p_i, (ln p_i)², ln y] shared across goods — 3 params."""
-    lp = np.log(np.maximum(p, 1e-8))
-    ly = np.log(np.maximum(y, 1e-8))
-    F  = np.zeros((len(y), G, 3))
-    for i in range(G):
-        F[:,i] = np.c_[lp[:,i], lp[:,i]**2, ly]
-    return F
-
-def feat_good_specific(p, y):
-    """All G log-prices + own curvature + income per good — G+2 params."""
-    lp = np.log(np.maximum(p, 1e-8))
-    ly = np.log(np.maximum(y, 1e-8))
-    F  = np.zeros((len(y), G, G+2))
-    for i in range(G):
-        F[:,i] = np.c_[lp, lp[:,i]**2, ly]
-    return F
-
-def feat_orth(p, y):
-    """Per-good intercepts + QR-orthogonalised log-prices + curvature + income."""
-    lp   = np.log(np.maximum(p, 1e-8))
-    ly   = np.log(np.maximum(y, 1e-8))
-    Q, _ = np.linalg.qr(lp - lp.mean(0))
-    Q    = Q[:,:G]
-    F    = np.zeros((len(y), G, 2*G+2))
-    for i in range(G):
-        F[:,i,i]      = 1.0        # per-good intercept
-        F[:,i,G:2*G]  = Q          # orthogonal price directions
-        F[:,i,2*G]    = lp[:,i]**2 # own curvature
-        F[:,i,2*G+1]  = ly
-    return F
-
-
-def run_lirl(ff, p, y, w):
-    """MaxEnt gradient ascent: θ ← θ + η (Ê[φ] − E_θ[φ] − λθ)."""
-    F     = ff(p, y)
-    theta = np.zeros(F.shape[2])
-    for ep in range(CFG['lirl_epochs']):
-        η      = CFG['lirl_lr'] / (1.0 + ep / 1000.0)
-        lg     = np.einsum('ngk,k->ng', F, theta)
-        lg    -= lg.max(1, keepdims=True)
-        prob   = np.exp(lg); prob /= prob.sum(1, keepdims=True)
-        grad   = (np.mean(np.einsum('ngk,ng->nk', F, w - prob), 0)
-                  - CFG['lirl_l2'] * theta)
-        theta += η * grad
-    return theta
-
-def pred_lirl(ff, theta, p, y):
-    F  = ff(p, y)
-    lg = np.einsum('ngk,k->ng', F, theta)
-    lg -= lg.max(1, keepdims=True)
-    e  = np.exp(lg)
-    return e / e.sum(1, keepdims=True)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  SECTION 4  NEURAL IRL (STATIC)
-# ─────────────────────────────────────────────────────────────────────────────
-
-class NeuralIRL(nn.Module):
-    """
-    MaxEnt Neural IRL — state = (ln p, ln y).
-    Architecture: (G+1) → 256 → 256 → 128 → G, SiLU activations.
-    Learnable β (log-parameterised, clamped [0.5, 20]).
-    Loss = KL(w_obs ‖ ŵ) + λ_mono · ∂ŵ_i/∂ln p_i > 0
-                         + λ_slut · ‖J − Jᵀ‖²_F  (delayed start).
-    """
-    name = 'Neural IRL'
-
-    def __init__(self, h=256):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(G+1, h),   nn.SiLU(),
-            nn.Linear(h, h),     nn.SiLU(),
-            nn.Linear(h, h//2),  nn.SiLU(),
-            nn.Linear(h//2, G))
-        self.log_beta = nn.Parameter(torch.tensor(1.5))
-        for m in self.net:
-            if isinstance(m, nn.Linear):
-                nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
-                nn.init.zeros_(m.bias)
-        nn.init.xavier_uniform_(self.net[-1].weight, gain=0.1)
-
-    @property
-    def beta(self):
-        return torch.exp(self.log_beta).clamp(0.5, 20.0)
-
-    def forward(self, lp, ly):
-        return torch.softmax(self.net(torch.cat([lp, ly], 1)) * self.beta, 1)
-
-    def slutsky(self, lp, ly):
-        lp_d = lp.detach().requires_grad_(True)
-        w    = self.forward(lp_d, ly)
-        J    = torch.stack([torch.autograd.grad(
-                   w[:,i].sum(), lp_d,
-                   create_graph=True, retain_graph=True)[0]
-               for i in range(G)], 2)
-        return ((J - J.transpose(1,2))**2).mean()
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  SECTION 5  MDP NEURAL IRL  (state augmented with habit stock x̄)
-# ─────────────────────────────────────────────────────────────────────────────
-
-class MDPNeuralIRL(nn.Module):
-    """
-    MDP-Aware Neural IRL — state = (ln p, ln y, x̄).
-    Identical architecture and losses to NeuralIRL; input dim = 2G+1.
-    x̄_t = δ x̄_{t-1} + (1-δ) w_{t-1} (δ=0.7) captures brand-loyalty
-    inertia: Bayer users rarely switch to Advil even on promotion.
-    """
-    name = 'MDP Neural IRL'
-
-    def __init__(self, h=256):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(2*G+1, h), nn.SiLU(),
-            nn.Linear(h, h),     nn.SiLU(),
-            nn.Linear(h, h//2),  nn.SiLU(),
-            nn.Linear(h//2, G))
-        self.log_beta = nn.Parameter(torch.tensor(1.5))
-        for m in self.net:
-            if isinstance(m, nn.Linear):
-                nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
-                nn.init.zeros_(m.bias)
-        nn.init.xavier_uniform_(self.net[-1].weight, gain=0.1)
-
-    @property
-    def beta(self):
-        return torch.exp(self.log_beta).clamp(0.5, 20.0)
-
-    def forward(self, log_p, log_y, xbar):
-        log_xbar = torch.log(torch.clamp(xbar, min=1e-6))
-        
-        return torch.softmax(
-            self.net(torch.cat([log_p, log_y, log_xbar], 1)) * self.beta, 1)
-
-    def slutsky(self, lp, ly, xb):
-        lp_d = lp.detach().requires_grad_(True)
-        w    = self.forward(lp_d, ly, xb)
-        J    = torch.stack([torch.autograd.grad(
-                   w[:,i].sum(), lp_d,
-                   create_graph=True, retain_graph=True)[0]
-               for i in range(G)], 2)
-        return ((J - J.transpose(1,2))**2).mean()
-
-
-def _train(model, p_tr, y_tr, w_tr, pfx, xb_tr=None, tag=''):
-    """Shared training loop for NeuralIRL / MDPNeuralIRL."""
-    dev    = CFG['device']
-    model  = model.to(dev)
-    opt    = optim.Adam(model.parameters(), lr=CFG[f'{pfx}_lr'],
-                        weight_decay=1e-5)
-    ep_tot = CFG[f'{pfx}_epochs']
-    sched  = optim.lr_scheduler.ReduceLROnPlateau(opt, mode='min', factor=0.5, patience=40, min_lr=1e-6)
-    N, bs  = len(y_tr), CFG[f'{pfx}_batch']
-    slut0  = int(ep_tot * CFG[f'{pfx}_slut_start'])
-    mdp    = xb_tr is not None
-
-    LP = torch.log(torch.tensor(np.maximum(p_tr, 1e-8), dtype=torch.float32)).to(dev)
-    LY = torch.log(torch.tensor(np.maximum(y_tr, 1e-8), dtype=torch.float32)).unsqueeze(1).to(dev)
-    W  = torch.tensor(w_tr, dtype=torch.float32).to(dev)
-    XB = torch.tensor(xb_tr, dtype=torch.float32).to(dev) if mdp else None
-
-    best_kl, best_sd, hist = float('inf'), None, []
-
-    for ep in range(1, ep_tot+1):
-        model.train()
-        idx  = torch.randperm(N, device=dev)[:bs]
-        lp_b, ly_b, w_b = LP[idx], LY[idx], W[idx]
-        xb_b = XB[idx] if mdp else None
-
-        opt.zero_grad()
-        wp   = model(lp_b, ly_b, xb_b) if mdp else model(lp_b, ly_b)
-        lkl  = nn.KLDivLoss(reduction='batchmean')(torch.log(wp+1e-10), w_b)
-
-        lp_d  = lp_b.detach().requires_grad_(True)
-        wm    = model(lp_d, ly_b, xb_b) if mdp else model(lp_d, ly_b)
-        g     = torch.autograd.grad(wm.sum(), lp_d, create_graph=True)[0]
-        lmono = torch.mean(torch.clamp(g, min=0))
-
-        lslut = torch.tensor(0.0, device=dev)
-        if ep >= slut0:
-            sub   = torch.randperm(N, device=dev)[:64]
-            lslut = (model.slutsky(LP[sub], LY[sub], XB[sub])
-                     if mdp else model.slutsky(LP[sub], LY[sub]))
-
-        loss = lkl + CFG[f'{pfx}_lam_mono']*lmono + CFG[f'{pfx}_lam_slut']*lslut
-        loss.backward()
-        nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        opt.step()
-        # ReduceLROnPlateau requires a metric — stepped in eval block below
-
-        if ep % 10 == 0:
-            model.eval()
-            with torch.no_grad():
-                wa = model(LP, LY, XB) if mdp else model(LP, LY)
-                kl = nn.KLDivLoss(reduction='batchmean')(
-                         torch.log(wa+1e-10), W).item()
-            sched.step(kl)   # ← plateau scheduler steps on held-out KL
-            if kl < best_kl:
-                best_kl = kl
-                best_sd = {k: v.cpu().clone() for k, v in model.state_dict().items()}
-            model.train()
-
-        if ep % 20 == 0:
-            hist.append({'epoch': ep, 'kl': lkl.item(), 'beta': model.beta.item()})
-            print(f'    [{tag}] ep {ep:4d} | KL={lkl.item():.5f} | β={model.beta.item():.3f}')
-
-    if best_sd:
-        model.load_state_dict(best_sd)
-    model.eval()
-    return model, hist
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  SECTION 6  CONTINUOUS VARIATIONAL MIXTURE IRL
-# ─────────────────────────────────────────────────────────────────────────────
-
-class VarMixture:
-    """
-    K Gaussian components in (α, ρ) CES parameter space.
-    Identifies latent consumer segments: aspirin-loyal (Bayer/Bufferin
-    loyalists), Tylenol-loyal, Advil/Motrin-loyal, price-sensitive switchers.
-    EM: Gaussian MSE likelihood, finite-difference gradient M-step.
-    """
-    name = 'Var. Mixture IRL'
-
-    def __init__(self, K=6, seed=0):
-        rng       = np.random.default_rng(seed)
-        self.K    = K
-        a0 = np.ones((K, G)) / G
-        noise = rng.uniform(-0.1, 0.1, (K, G))
-        a0 = np.abs(a0 + noise)
-        a0 /= a0.sum(1, keepdims=True)
-        r0 = np.linspace(0.3, 0.6, K)
-        self.mu_a = np.log(a0 + 1e-6)
-        self.mu_r = np.log(r0 / (1 - r0))
-        self.sa   = 0.5 * np.ones((K, G))
-        self.sr   = 0.3 * np.ones(K)
-        self.pi   = np.ones(K) / K
-
-    def _decode(self, la, lr):
-        a = np.exp(la - la.max()); a /= a.sum()
-        r = float(np.clip(1/(1+np.exp(-lr)), 0.05, 0.95))
-        return a, r
-
-    def _ces(self, p, a, r):
-        s   = 1.0/(1.0-r)
-        num = a[None,:]**s * np.maximum(p, 1e-8)**(1-s)
-        return num / num.sum(1, keepdims=True)
-
-    def _comp(self, k, p, _y):
-        rng = np.random.default_rng(k*99)
-        return np.stack([
-            self._ces(p, *self._decode(
-                rng.normal(self.mu_a[k], self.sa[k]),
-                rng.normal(self.mu_r[k], self.sr[k])))
-            for _ in range(CFG['mix_n_spc'])]).mean(0)
-
-    def fit(self, p, y, w):
-        lr, sig2 = CFG['mix_lr_mu'], CFG['mix_sigma2']
-        
-        # FIX 1: Use larger sample for gradient estimation (100 instead of 20)
-        # This prevents noisy gradients from killing components
-        n_grad = min(100, len(p))
-
-        for it in range(CFG['mix_n_iter']):
-            wk    = np.stack([self._comp(k, p, y) for k in range(self.K)])
-            
-            # E-Step: Calculate responsibilities
-            log_r = np.array([
-                -np.sum((wk[k]-w)**2, 1)/(2*sig2) + np.log(self.pi[k]+1e-10)
-                for k in range(self.K)])
-            log_r -= log_r.max(0)
-            resp   = np.exp(log_r); resp /= resp.sum(0, keepdims=True)
-            
-            # FIX 2: Dirichlet Smoothing
-            # Add small constant (0.01) so no component hits exactly 0.0 probability
-            self.pi = resp.mean(1) + 0.01
-            self.pi /= self.pi.sum()
-            
-            # M-Step: Gradient Descent
-            for k in range(self.K):
-                # Weighted error signal
-                sig = np.mean(resp[k,:,None] * (w - wk[k]), 0)
-                
-                # Update Alpha
-                for j in range(G):
-                    h = 0.01; self.mu_a[k,j] += h
-                    # Calculate gradient on larger subsample (n_grad)
-                    d = (self._comp(k, p[:n_grad], y[:n_grad]) - wk[k][:n_grad]).mean(0)
-                    self.mu_a[k,j] -= h
-                    self.mu_a[k,j] += lr * np.dot(sig, d) / (h+1e-8)
-                
-                # Update Rho
-                h = 0.01; self.mu_r[k] += h
-                d = (self._comp(k, p[:n_grad], y[:n_grad]) - wk[k][:n_grad]).mean(0)
-                self.mu_r[k] -= h
-                self.mu_r[k] += lr * np.dot(sig, d) / (h+1e-8)
-                
-            if (it+1) % 10 == 0:
-                mse = np.mean((np.einsum('k,kng->ng', self.pi, wk) - w)**2)
-                print(f'    iter {it+1:2d} | MSE={mse:.5f} | π={np.round(self.pi,3)}')
-        return self
-
-    def predict(self, p, y):
-        wk = np.stack([self._comp(k, p, y) for k in range(self.K)])
-        return np.einsum('k,kng->ng', self.pi, wk)
-
-    def summary(self):
-        rows = []
-        for k in range(self.K):
-            a, r = self._decode(self.mu_a[k], self.mu_r[k])
-            rows.append({'K': k+1, 'pi': self.pi[k],
-                         'alpha_asp': a[0], 'alpha_acet': a[1],
-                         'alpha_ibu': a[2], 'rho': r})
-        return pd.DataFrame(rows)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -865,22 +504,22 @@ def run_once(seed: int) -> dict:
     aids_m = LAAIDS().fit(p_tr, w_tr, y_tr)
     blp_m  = BLPLogitIV().fit(p_tr, w_tr, Z_tr)
 
-    th_sh = run_lirl(feat_shared,        p_tr, y_tr, w_tr)
-    th_gs = run_lirl(feat_good_specific, p_tr, y_tr, w_tr)
-    th_or = run_lirl(feat_orth,          p_tr, y_tr, w_tr)
+    th_sh = run_lirl(feat_shared,        p_tr, y_tr, w_tr, CFG)
+    th_gs = run_lirl(feat_good_specific, p_tr, y_tr, w_tr, CFG)
+    th_or = run_lirl(feat_orth,          p_tr, y_tr, w_tr, CFG)
 
     nirl_m, hist_n = _train(NeuralIRL(CFG['nirl_hidden']),
-                             p_tr, y_tr, w_tr, 'nirl',
+                             p_tr, y_tr, w_tr, 'nirl', CFG,
                              tag=f'Neural IRL s={seed}')
 
     mdp_m, hist_m = _train(MDPNeuralIRL(CFG['mdp_hidden']),
-                            p_tr, y_tr, w_tr, 'mdp',
+                            p_tr, y_tr, w_tr, 'mdp', CFG,
                             xb_tr=xb_tr,
                             tag=f'MDP-IRL s={seed}')
 
     ns   = min(CFG['mix_subsamp'], len(tr))
     mi   = np.random.choice(len(tr), ns, replace=False)
-    vmix = VarMixture(CFG['mix_K'], seed=seed)
+    vmix = VarMixture(CFG, CFG['mix_K'], seed=seed)
     vmix.fit(p_tr[mi], y_tr[mi], w_tr[mi])
     cdf  = vmix.summary()
 
@@ -1158,11 +797,11 @@ fig1, ax1 = plt.subplots(figsize=(11, 6))
 curve_defs = [
     ('r--',  2.0,  None,  'LA-AIDS'),
     ('g-.',  2.0,  None,  'BLP (IV)'),
-    ('y:',   1.8,  None,  'Lin IRL (Shared)'),
+    # ('y:',   1.8,  None,  'Lin IRL (Shared)'),
     ('c:',   1.8,  None,  'Lin IRL (Orth)'),
     ('b-',   2.5,  None,  'Neural IRL'),
     ('-',    2.0,  TEAL,  'MDP Neural IRL'),
-    ('m--',  2.0,  None,  'Var. Mixture'),
+    # ('m--',  2.0,  None,  'Var. Mixture'),
 ]
 for sty, lw, col, lbl in curve_defs:
     mu  = curve_mean.get(lbl)
@@ -1178,8 +817,8 @@ for sty, lw, col, lbl in curve_defs:
                          (mu[:,0] - std[:,0]).clip(0),
                           mu[:,0] + std[:,0],
                          color=fc, alpha=0.12)
-ax1.axvline(p_mn[sg], color='orange', ls=':', lw=1.5, alpha=0.9,
-            label='Mean ibuprofen price')
+# ax1.axvline(p_mn[sg], color='orange', ls=':', lw=1.5, alpha=0.9,
+            # label='Mean ibuprofen price')
 se_note = f'  (shaded bands = ±1 SD, n={N_RUNS})' if N_RUNS > 1 else ''
 ax1.set_title(f"Aspirin Budget Share vs Ibuprofen Unit Price\n"
               f"Dominick's Analgesics — All Models{se_note}",

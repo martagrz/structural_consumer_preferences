@@ -1,4 +1,4 @@
 Model,RMSE_mean,RMSE_std,KL_mean,KL_std,Reduction,n_runs
 LA-AIDS,0.070687,0.0,0.023115,0.0,baseline,5
-Neural IRL (static),0.066922,0.000645,0.021167,0.000402,5.3%,5
-MDP Neural IRL (x̄ state),0.051161,0.000192,0.012156,0.000103,27.6%,5
+Neural IRL (static),0.065246,0.000477,0.020105,0.000338,7.7%,5
+MDP Neural IRL (x̄ state),0.051197,0.000226,0.012184,0.000145,27.6%,5
