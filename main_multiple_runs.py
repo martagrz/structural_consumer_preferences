@@ -492,7 +492,7 @@ for lbl, st in STYLE.items():
 ax1.set_xlabel("Fuel price ($p_1$)", fontsize=14)
 ax1.set_ylabel("Food budget share ($w_0$)", fontsize=14)
 ax1.legend(fontsize=14, ncol=2, loc="upper left")
-ax1.grid(False, alpha=0.3)
+ax1.grid(True, alpha=0.3)
 fig1.tight_layout()
 fig1.savefig("figures/fig1_demand_curves.pdf", dpi=150, bbox_inches="tight")
 fig1.savefig("figures/fig1_demand_curves.png", dpi=150, bbox_inches="tight")
@@ -525,10 +525,10 @@ for gi, gn in enumerate(good_names):
     # Formatting
     ax.set_xlabel("Fuel price", fontsize=14)
     ax.set_ylabel(f"{gn} budget share", fontsize=14)
-    ax.set_title(f"{gn} Share (Habit DGP)", fontsize=14, fontweight="bold")
+    # ax.set_title(f"{gn} Share (Habit DGP)", fontsize=14, fontweight="bold")
     
     # Optimized legend for standalone plot
-    ax.legend(fontsize=10, loc='best')
+    ax.legend(fontsize=14, loc='best')
     ax.grid(True, alpha=0.2)
     
     fig.tight_layout()
@@ -567,13 +567,13 @@ for suffix, hist, col_kl, col_b, title in configs:
     ax2.plot(ep_x, bt_y, "s--", ms=5, color=col_b,  label="β (learned)")
     
     # Formatting
-    ax.set_xlabel("Epoch")
-    ax.set_ylabel("KL Divergence", color=col_kl)
-    ax2.set_ylabel("Temperature β", color=col_b)
+    ax.set_xlabel("Epoch", fontsize=14)
+    ax.set_ylabel("KL Divergence", color=col_kl, fontsize=14)
+    ax2.set_ylabel("Temperature β", color=col_b, fontsize=14)
     
-    # Maintain original limits
-    ax.set_ylim([0, 0.003])
-    ax2.set_ylim([0, 0.003])
+    # Set y limits
+    ax2.set_ylim([4.1, 4.4])     # Left Y-axis (KL)
+    ax.set_ylim([0, 0.003])    # Right Y-axis (Beta)
     
     # Optional: Restore title if needed for separate plots
     # ax.set_title(title, fontsize=14, fontweight="bold")
@@ -581,7 +581,7 @@ for suffix, hist, col_kl, col_b, title in configs:
     # Legend handling
     l1, n1 = ax.get_legend_handles_labels()
     l2, n2 = ax2.get_legend_handles_labels()
-    ax.legend(l1 + l2, n1 + n2, loc='upper right', fontsize=12)
+    ax.legend(l1 + l2, n1 + n2, loc='upper right', fontsize=14)
     
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
@@ -650,12 +650,16 @@ print("    Saved: figures/fig4b_robustness_bars.pdf")
 plt.close("all")
 
 # ── Figure 5: Variational Mixture (last run) ───────────────────────
+# ── Setup Data ──────────────────────────────────────────────────
 comp_df = last["comp_summary"]
 x_pos   = np.arange(len(comp_df))
 tab10   = plt.cm.tab10(x_pos / len(comp_df))
 
+# Standardize figsize for both: width=12 provides ample space for X-labels
+standard_figsize = (12, 6)
+
 # ── Figure 5a: Mixture Weights (Bar Chart) ──────────────────────
-fig5a, ax5a = plt.subplots(figsize=(8, 5))
+fig5a, ax5a = plt.subplots(figsize=standard_figsize)
 
 bars = ax5a.bar(x_pos, comp_df["pi"], color=tab10, alpha=0.85, edgecolor="k")
 for bar, row in zip(bars, comp_df.itertuples()):
@@ -666,13 +670,13 @@ for bar, row in zip(bars, comp_df.itertuples()):
 ax5a.set_xticks(x_pos)
 ax5a.set_xticklabels(
     [f"K={k+1}\nα=[{r.alpha_food:.2f},{r.alpha_fuel:.2f},{r.alpha_other:.2f}]"
-     for k, r in enumerate(comp_df.itertuples())], fontsize=11, rotation=15)
+     for k, r in enumerate(comp_df.itertuples())], fontsize=14, rotation=15)
 
 ax5a.set_ylabel("Mixture weight $\\hat{\\pi}_k$", fontsize=14)
 ax5a.set_ylim(0, 1)
 ax5a.axhline(1/6, color="gray", ls="--", alpha=0.5, label="Uniform prior")
-ax5a.legend(fontsize=10)
-ax5a.grid(False, alpha=0.3, axis="y")
+ax5a.legend(fontsize=14)
+ax5a.grid(True, alpha=0.3, axis="y")
 
 fig5a.tight_layout()
 fig5a.savefig("figures/fig5a_mixture_weights.pdf", dpi=150, bbox_inches="tight")
@@ -681,7 +685,7 @@ print("    Saved: figures/fig5a_mixture_weights.pdf")
 
 
 # ── Figure 5b: Component Centres (Scatter Plot) ────────────────
-fig5b, ax5b = plt.subplots(figsize=(7, 6))
+fig5b, ax5b = plt.subplots(figsize=standard_figsize)
 
 for k, row in enumerate(comp_df.itertuples()):
     ax5b.scatter(row.alpha_food, row.alpha_fuel,
@@ -694,8 +698,10 @@ ax5b.set_xlabel("$\\hat{\\alpha}_{\\mathrm{food}}$", fontsize=14)
 ax5b.set_ylabel("$\\hat{\\alpha}_{\\mathrm{fuel}}$", fontsize=14)
 ax5b.set_xlim(0, 0.9)
 ax5b.set_ylim(0, 0.9)
-ax5b.legend(fontsize=11, bbox_to_anchor=(1.05, 1), loc='upper left') # Moved legend outside for clarity
-ax5b.grid(False, alpha=0.3)
+
+# Legend moved inside the grid in the top right corner
+ax5b.legend(fontsize=14, loc='upper right') 
+ax5b.grid(True, alpha=0.3)
 
 fig5b.tight_layout()
 fig5b.savefig("figures/fig5b_mixture_centers.pdf", dpi=150, bbox_inches="tight")

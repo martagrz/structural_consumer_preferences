@@ -11,7 +11,7 @@ class NeuralIRL(nn.Module):
         super().__init__()
         self.n_goods = n_goods
         hdim = hidden_dim if hidden_dim is not None else h
-        self.reward_net = nn.Sequential(
+        self.net = nn.Sequential(
             nn.Linear(n_goods + 1, hdim),
             nn.SiLU(),
             nn.Linear(hdim, hdim),
@@ -21,18 +21,18 @@ class NeuralIRL(nn.Module):
             nn.Linear(hdim // 2, n_goods),
         )
         self.log_beta = nn.Parameter(torch.tensor(1.5))
-        for m in self.reward_net:
+        for m in self.net:
             if isinstance(m, nn.Linear):
                 nn.init.kaiming_normal_(m.weight, nonlinearity="relu")
                 nn.init.zeros_(m.bias)
-        nn.init.xavier_uniform_(self.reward_net[-1].weight, gain=0.1)
+        nn.init.xavier_uniform_(self.net[-1].weight, gain=0.1)
 
     @property
     def beta(self):
         return torch.exp(self.log_beta).clamp(0.5, 20.0)
 
     def forward(self, log_p, log_y):
-        return torch.softmax(self.reward_net(torch.cat([log_p, log_y], 1)) * self.beta, 1)
+        return torch.softmax(self.net(torch.cat([log_p, log_y], 1)) * self.beta, 1)
 
     def _jacobian_symmetry_penalty(self, log_p, log_y):
         lp_d = log_p.detach().requires_grad_(True)

@@ -90,13 +90,15 @@ CFG = dict(
     # Linear IRL
     lirl_lr=0.05, lirl_epochs=3000, lirl_l2=1e-4,
     # Neural IRL
-    nirl_hidden=256, nirl_epochs=5000, nirl_lr=5e-5,
-    nirl_batch=512, nirl_lam_mono=0.25, nirl_lam_slut=0.10,
+    nirl_hidden=256, nirl_epochs=5000, nirl_lr=5e-4,
+    nirl_batch=512, nirl_lam_mono=0.20, nirl_lam_slut=0.10,
     nirl_slut_start=0.25,
+
     # MDP Neural IRL
-    mdp_hidden=256, mdp_epochs=5000, mdp_lr=5e-5,
-    mdp_batch=512, mdp_lam_mono=0.25, mdp_lam_slut=0.10,
-    mdp_slut_start=0.25, habit_decay=0.70,
+    mdp_hidden=256, mdp_epochs=5000, mdp_lr=5e-4,
+    mdp_batch=512, mdp_lam_mono=0.15, mdp_lam_slut=0.08,
+    mdp_slut_start=0.25,
+    habit_decay=0.70,
     # Variational Mixture
     mix_K=6, 
     mix_n_spc=100,       # INCREASED from 5 -> 20 (Stable gradients)
@@ -343,7 +345,7 @@ def build_arrays(panel: pd.DataFrame) -> dict:
     #    q = (Share * Income) / Price
     q_approx = (shares * income[:,None]) / np.maximum(prices, 0.01)
     
-    δ   = CFG['habit_decay']
+    delta   = CFG['habit_decay']
     xb  = np.zeros_like(q_approx)
     stv = panel['STORE'].values
     
@@ -356,7 +358,7 @@ def build_arrays(panel: pd.DataFrame) -> dict:
             prev = gm.copy() # Reset per store
         xb[i] = prev
         # Update habit with physical quantity
-        prev  = δ * prev + (1-δ) * q_approx[i]
+        prev  = delta * prev + (1-delta) * q_approx[i]
 
     return dict(prices=prices, shares=shares, income=income,
                 xbar=xb, week=panel['WEEK'].values, store=stv)
@@ -464,6 +466,43 @@ xb_tr, xb_te = xbar[tr], xbar[te]
 s_tr, s_te   = stores[tr], stores[te]
 wk_tr, wk_te = weeks[tr],  weeks[te]
 print(f'  Train: {len(tr):,}  |  Test: {len(te):,}')
+
+# After computing xb_tr and xb_te, demean within each store
+# so the network sees deviations from store average, not levels
+store_xb_means = {}
+for s in np.unique(s_tr):
+    mask = s_tr == s
+    store_xb_means[s] = xb_tr[mask].mean(0)
+
+# Subtract store mean from xb_tr
+xb_tr_dm = xb_tr.copy()
+for s in np.unique(s_tr):
+    mask = s_tr == s
+    xb_tr_dm[mask] -= store_xb_means[s]
+
+# For test: subtract the TRAINING store mean (if store seen in train)
+# For unseen stores: subtract global train mean
+global_mean = np.mean(list(store_xb_means.values()), axis=0)
+xb_te_dm = xb_te.copy()
+for i, s in enumerate(s_te):
+    xb_te_dm[i] -= store_xb_means.get(s, global_mean)
+
+xb_tr = xb_tr_dm
+xb_te = xb_te_dm
+
+# ── Normalise log_xb to match log_p scale ────────────────────────────────────
+log_xb_tr_raw = np.log(np.maximum(xb_tr, 1e-6))
+log_xb_te_raw = np.log(np.maximum(xb_te, 1e-6))
+
+_xb_mean = log_xb_tr_raw.mean(0, keepdims=True)
+_xb_std  = log_xb_tr_raw.std(0,  keepdims=True)
+_lp_std  = np.log(np.maximum(p_tr, 1e-8)).std()
+
+xb_tr = (log_xb_tr_raw - _xb_mean) / (_xb_std + 1e-8) * _lp_std
+xb_te = (log_xb_te_raw - _xb_mean) / (_xb_std + 1e-8) * _lp_std
+
+print(f'  log_xb normalised: mean={xb_tr.mean():.3f} std={xb_tr.std():.3f} '
+      f'(target log_p std={_lp_std:.3f})')
 
 # Instruments (deterministic — computed once)
 print('\n[4/7] Building Hausman instruments...')
@@ -820,11 +859,11 @@ for sty, lw, col, lbl in curve_defs:
 # ax1.axvline(p_mn[sg], color='orange', ls=':', lw=1.5, alpha=0.9,
             # label='Mean ibuprofen price')
 se_note = f'  (shaded bands = ±1 SD, n={N_RUNS})' if N_RUNS > 1 else ''
-ax1.set_title(f"Aspirin Budget Share vs Ibuprofen Unit Price\n"
-              f"Dominick's Analgesics — All Models{se_note}",
-              fontsize=12, fontweight='bold')
-ax1.set_xlabel('Ibuprofen Unit Price ($/100 tablets)', fontsize=11)
-ax1.set_ylabel('Aspirin Budget Share $w_0$', fontsize=11)
+# ax1.set_title(f"Aspirin Budget Share vs Ibuprofen Unit Price\n"
+#               f"Dominick's Analgesics — All Models{se_note}",
+#               fontsize=12, fontweight='bold')
+ax1.set_xlabel('Ibuprofen Unit Price ($/100 tablets)', fontsize=14)
+ax1.set_ylabel('Aspirin Budget Share $w_0$', fontsize=14)
 ax1.legend(fontsize=9, ncol=2, framealpha=0.93)
 ax1.grid(True, alpha=0.3); fig1.tight_layout()
 for ext in ('pdf','png'):
@@ -855,14 +894,15 @@ for gi, (gn, ax) in enumerate(zip(GOODS, axes2)):
                              mu[:,gi] + std[:,gi],
                             color=fc, alpha=0.14)
     ax.axvline(p_mn[sg], color='orange', ls=':', lw=1.3, alpha=0.8)
-    ax.set_title(f'{gn} Budget Share', fontsize=11, fontweight='bold')
-    ax.set_xlabel('Ibuprofen Price ($/100 tab)', fontsize=10)
-    ax.set_ylabel(f'$w_{gi}$', fontsize=10)
-    ax.legend(fontsize=8); ax.grid(True, alpha=0.3)
+    # ax.set_title(f'{gn} Budget Share', fontsize=11, fontweight='bold')
+    ax.set_xlabel('Ibuprofen Price ($/100 tab)', fontsize=14)
+    ax.set_ylabel(f'$w_{gi}$', fontsize=14)
+    ax.set_ylim(0.15, 0.55)
+    ax.legend(fontsize=14); ax.grid(True, alpha=0.3)
 se_note2 = f'  (bands = ±1 SD, n={N_RUNS})' if N_RUNS > 1 else ''
-fig2.suptitle(f"MDP Neural IRL vs Static Models — Dominick's Analgesics\n"
-              f"All Three Budget Shares vs Ibuprofen Price{se_note2}",
-              fontsize=12, fontweight='bold')
+# fig2.suptitle(f"MDP Neural IRL vs Static Models — Dominick's Analgesics\n"
+#               f"All Three Budget Shares vs Ibuprofen Price{se_note2}",
+#               fontsize=12, fontweight='bold')
 fig2.tight_layout()
 for ext in ('pdf','png'):
     fig2.savefig(f"{CFG['fig_dir']}/fig_mdp_advantage.{ext}",
