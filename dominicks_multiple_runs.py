@@ -346,22 +346,27 @@ def build_arrays(panel: pd.DataFrame) -> dict:
     q_approx = (shares * income[:,None]) / np.maximum(prices, 0.01)
     
     delta   = CFG['habit_decay']
-    xb  = np.zeros_like(q_approx)
+    xb       = np.zeros_like(q_approx)   # habit stock at time i  (= xb_prev for model)
+    q_prev   = np.zeros_like(q_approx)   # quantities at time i-1 (= q_prev for model)
     stv = panel['STORE'].values
-    
+
     # Initialize with mean quantities, not mean shares
-    gm   = q_approx.mean(0) 
-    prev = gm.copy()
-    
+    gm      = q_approx.mean(0)
+    prev    = gm.copy()   # habit stock before first obs
+    prev_q  = gm.copy()   # previous-period quantities (initialised at global mean)
+
     for i in range(len(shares)):
         if i > 0 and stv[i] != stv[i-1]:
-            prev = gm.copy() # Reset per store
-        xb[i] = prev
-        # Update habit with physical quantity
-        prev  = delta * prev + (1-delta) * q_approx[i]
+            prev   = gm.copy()   # reset at store boundary
+            prev_q = gm.copy()
+        xb[i]     = prev    # habit stock entering period i
+        q_prev[i] = prev_q  # quantities purchased in period i-1
+        # Save current quantities for next iteration, then update habit
+        prev_q = q_approx[i]
+        prev   = delta * prev + (1 - delta) * q_approx[i]
 
     return dict(prices=prices, shares=shares, income=income,
-                xbar=xb, week=panel['WEEK'].values, store=stv)
+                xbar=xb, q_prev=q_prev, week=panel['WEEK'].values, store=stv)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -373,7 +378,12 @@ def build_arrays(panel: pd.DataFrame) -> dict:
 #  SECTION 7  PREDICTION & EVALUATION UTILITIES
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _pred(spec, p, y, xb=None, **kw):
+def _pred(spec, p, y, xb_prev=None, q_prev=None, **kw):
+    """Unified prediction helper.
+
+    For the MDP model pass *both* xb_prev (log-normalised previous habit
+    stock) and q_prev (log-normalised previous quantities) as numpy arrays.
+    """
     dev = CFG['device']
     if spec == 'aids':  return kw['aids'].predict(p, y)
     if spec == 'blp':   return kw['blp'].predict(p)
@@ -387,42 +397,54 @@ def _pred(spec, p, y, xb=None, **kw):
         with torch.no_grad():
             lp  = torch.log(torch.tensor(np.maximum(p,1e-8), dtype=torch.float32)).to(dev)
             ly  = torch.log(torch.tensor(np.maximum(y,1e-8), dtype=torch.float32)).unsqueeze(1).to(dev)
-            xbt = torch.tensor(xb, dtype=torch.float32).to(dev)
-            return kw['mdp'](lp, ly, xbt).cpu().numpy()
+            xbp = torch.tensor(xb_prev, dtype=torch.float32).to(dev)
+            qp  = torch.tensor(q_prev,  dtype=torch.float32).to(dev)
+            return kw['mdp'](lp, ly, xbp, qp).cpu().numpy()
     if spec == 'mix':   return kw['mix'].predict(p, y)
     raise ValueError(spec)
 
 
-def own_elasticity(spec, p0, y0, xb0=None, h=1e-4, **kw):
+def own_elasticity(spec, p0, y0, xb_prev0=None, q_prev0=None, h=1e-4, **kw):
     w0  = _pred(spec, p0[None], np.array([y0]),
-                xb=xb0[None] if xb0 is not None else None, **kw)[0]
+                xb_prev=xb_prev0[None] if xb_prev0 is not None else None,
+                q_prev =q_prev0[None]  if q_prev0  is not None else None, **kw)[0]
     eps = []
     for i in range(G):
         p1 = p0.copy()[None]; p1[0,i] *= 1+h
         w1 = _pred(spec, p1, np.array([y0]),
-                   xb=xb0[None] if xb0 is not None else None, **kw)[0]
+                   xb_prev=xb_prev0[None] if xb_prev0 is not None else None,
+                   q_prev =q_prev0[None]  if q_prev0  is not None else None, **kw)[0]
         eps.append(((w1[i]-w0[i])/w0[i])/h - 1)
     return np.array(eps)
 
 
-def comp_var(spec, p0, p1, y, xb0=None, **kw):
+def comp_var(spec, p0, p1, y, xb_prev0=None, q_prev0=None, **kw):
     path = np.linspace(p0, p1, CFG['cv_steps'])
     dp   = (p1-p0) / CFG['cv_steps']
     cv   = 0.0
     for t in range(CFG['cv_steps']):
         w   = _pred(spec, path[t:t+1], np.array([y]),
-                    xb=xb0[None] if xb0 is not None else None, **kw)[0]
+                    xb_prev=xb_prev0[None] if xb_prev0 is not None else None,
+                    q_prev =q_prev0[None]  if q_prev0  is not None else None, **kw)[0]
         cv -= (w * y / path[t]) @ dp
     return cv
 
 
-def metrics(spec, p, y, w_true, xb=None, **kw):
-    wp = _pred(spec, p, y, xb=xb, **kw)
+def _xbt_kw(xbt):
+    """Unpack an xbt entry (None or (xb_prev, q_prev) tuple) into kwargs."""
+    if xbt is None:
+        return {}
+    xbp, qp = xbt
+    return {'xb_prev': xbp, 'q_prev': qp}
+
+
+def metrics(spec, p, y, w_true, xb_prev=None, q_prev=None, **kw):
+    wp = _pred(spec, p, y, xb_prev=xb_prev, q_prev=q_prev, **kw)
     return {'RMSE': np.sqrt(mean_squared_error(w_true, wp)),
             'MAE':  mean_absolute_error(w_true, wp)}
 
-def kl_div(spec, p, y, w_true, xb=None, **kw):
-    wp = np.clip(_pred(spec, p, y, xb=xb, **kw), 1e-8, 1.0)
+def kl_div(spec, p, y, w_true, xb_prev=None, q_prev=None, **kw):
+    wp = np.clip(_pred(spec, p, y, xb_prev=xb_prev, q_prev=q_prev, **kw), 1e-8, 1.0)
     wt = np.clip(w_true, 1e-8, 1.0)
     return float(np.mean(np.sum(wt * np.log(wt/wp), 1)))
 
@@ -435,6 +457,7 @@ panel  = load_panel()
 data   = build_arrays(panel)
 prices = data['prices']; shares = data['shares']
 income = data['income']; xbar   = data['xbar']
+q_prev_raw = data['q_prev']          # quantities at t-1 (raw, same units as xbar)
 weeks  = data['week'];   stores = data['store']
 
 # Descriptive stats
@@ -462,47 +485,61 @@ if len(te) < 30 or len(tr) < 50:
 p_tr, p_te = prices[tr], prices[te]
 w_tr, w_te = shares[tr], shares[te]
 y_tr, y_te = income[tr], income[te]
-xb_tr, xb_te = xbar[tr], xbar[te]
+xb_tr, xb_te         = xbar[tr],      xbar[te]        # habit stock at t (= xb_prev)
+qp_tr, qp_te         = q_prev_raw[tr], q_prev_raw[te]  # quantities at t-1 (= q_prev)
 s_tr, s_te   = stores[tr], stores[te]
 wk_tr, wk_te = weeks[tr],  weeks[te]
 print(f'  Train: {len(tr):,}  |  Test: {len(te):,}')
 
-# After computing xb_tr and xb_te, demean within each store
-# so the network sees deviations from store average, not levels
+# ── Store-level demeaning (same means applied to xb and q_prev) ───────────────
+# Network sees deviations from store average, not levels.
 store_xb_means = {}
 for s in np.unique(s_tr):
     mask = s_tr == s
     store_xb_means[s] = xb_tr[mask].mean(0)
 
-# Subtract store mean from xb_tr
-xb_tr_dm = xb_tr.copy()
-for s in np.unique(s_tr):
-    mask = s_tr == s
-    xb_tr_dm[mask] -= store_xb_means[s]
-
-# For test: subtract the TRAINING store mean (if store seen in train)
-# For unseen stores: subtract global train mean
 global_mean = np.mean(list(store_xb_means.values()), axis=0)
-xb_te_dm = xb_te.copy()
-for i, s in enumerate(s_te):
-    xb_te_dm[i] -= store_xb_means.get(s, global_mean)
 
-xb_tr = xb_tr_dm
-xb_te = xb_te_dm
+def _demean(arr, idxs, store_ids):
+    out = arr.copy()
+    for i, s in enumerate(store_ids):
+        out[i] -= store_xb_means.get(s, global_mean)
+    return out
 
-# ── Normalise log_xb to match log_p scale ────────────────────────────────────
+def _demean_train(arr, store_ids):
+    out = arr.copy()
+    for s in np.unique(s_tr):
+        mask = store_ids == s
+        out[mask] -= store_xb_means[s]
+    return out
+
+xb_tr = _demean_train(xb_tr, s_tr)
+xb_te = _demean(xb_te, range(len(s_te)), s_te)
+qp_tr = _demean_train(qp_tr, s_tr)
+qp_te = _demean(qp_te, range(len(s_te)), s_te)
+
+# ── Normalise both log_xb_prev and log_q_prev to match log_p scale ───────────
+# Use xb_prev training statistics for *both* so the weighted average δ·xb + (1-δ)·q
+# is in a consistent log-space.
 log_xb_tr_raw = np.log(np.maximum(xb_tr, 1e-6))
 log_xb_te_raw = np.log(np.maximum(xb_te, 1e-6))
+log_qp_tr_raw = np.log(np.maximum(qp_tr, 1e-6))
+log_qp_te_raw = np.log(np.maximum(qp_te, 1e-6))
 
 _xb_mean = log_xb_tr_raw.mean(0, keepdims=True)
 _xb_std  = log_xb_tr_raw.std(0,  keepdims=True)
 _lp_std  = np.log(np.maximum(p_tr, 1e-8)).std()
 
-xb_tr = (log_xb_tr_raw - _xb_mean) / (_xb_std + 1e-8) * _lp_std
-xb_te = (log_xb_te_raw - _xb_mean) / (_xb_std + 1e-8) * _lp_std
+def _norm(x): return (x - _xb_mean) / (_xb_std + 1e-8) * _lp_std
 
-print(f'  log_xb normalised: mean={xb_tr.mean():.3f} std={xb_tr.std():.3f} '
+xb_tr = _norm(log_xb_tr_raw)
+xb_te = _norm(log_xb_te_raw)
+qp_tr = _norm(log_qp_tr_raw)
+qp_te = _norm(log_qp_te_raw)
+
+print(f'  log_xb_prev normalised: mean={xb_tr.mean():.3f} std={xb_tr.std():.3f} '
       f'(target log_p std={_lp_std:.3f})')
+print(f'  log_q_prev  normalised: mean={qp_tr.mean():.3f} std={qp_tr.std():.3f}')
 
 # Instruments (deterministic — computed once)
 print('\n[4/7] Building Hausman instruments...')
@@ -516,10 +553,13 @@ phi  = p_te[:,sg].max()*1.2
 pgr  = np.linspace(plo, phi, 80)
 tpx  = np.tile(p_te.mean(0), (80,1)); tpx[:,sg] = pgr
 fy   = np.full(80, float(y_te.mean()))
-xbr  = np.tile(xb_te.mean(0), (80,1))
+xbr  = np.tile(xb_te.mean(0), (80,1))   # grid xb_prev (log-normalised)
+qpr  = np.tile(qp_te.mean(0), (80,1))   # grid q_prev  (log-normalised)
 
-p_mn  = p_te.mean(0); y_mn = float(y_te.mean()); xb_mn = xb_te.mean(0)
-p0w   = p_mn.copy(); p1w = p_mn.copy(); p1w[sg] *= 1+ss
+p_mn    = p_te.mean(0); y_mn = float(y_te.mean())
+xb_mn   = xb_te.mean(0)    # mean log-normalised xb_prev for test
+qp_mn   = qp_te.mean(0)    # mean log-normalised q_prev  for test
+p0w     = p_mn.copy(); p1w = p_mn.copy(); p1w[sg] *= 1+ss
 
 TEAL  = '#009688'
 
@@ -553,7 +593,8 @@ def run_once(seed: int) -> dict:
 
     mdp_m, hist_m = _train(MDPNeuralIRL(CFG['mdp_hidden']),
                             p_tr, y_tr, w_tr, 'mdp', CFG,
-                            xb_tr=xb_tr,
+                            xb_prev_tr=xb_tr,
+                            q_prev_tr=qp_tr,
                             tag=f'MDP-IRL s={seed}')
 
     ns   = min(CFG['mix_subsamp'], len(tr))
@@ -565,6 +606,8 @@ def run_once(seed: int) -> dict:
     KW = dict(aids=aids_m, blp=blp_m, nirl=nirl_m, mdp=mdp_m, mix=vmix,
               ff=feat_shared, theta=th_sh)
 
+    # xbt entries: None → non-MDP model; (xb_prev, q_prev) tuple → MDP model
+    _mdp_te = (xb_te, qp_te)
     SPECS = [
         ('LA-AIDS',          'aids', {},                                            None),
         ('BLP (IV)',         'blp',  {},                                            None),
@@ -572,22 +615,23 @@ def run_once(seed: int) -> dict:
         ('Lin IRL GoodSpec', 'lirl', {'ff': feat_good_specific, 'theta': th_gs},   None),
         ('Lin IRL Orth',     'lirl', {'ff': feat_orth,          'theta': th_or},   None),
         ('Neural IRL',       'nirl', {},                                            None),
-        ('MDP Neural IRL',   'mdp',  {},                                            xb_te),
+        ('MDP Neural IRL',   'mdp',  {},                                            _mdp_te),
         ('Var. Mixture',     'mix',  {},                                            None),
     ]
 
     # ── Table 1: accuracy ─────────────────────────────────────────────────
     perf = {}
     for nm, sp, ek, xbt in SPECS:
-        perf[nm] = metrics(sp, p_te, y_te, w_te, xb=xbt, **{**KW, **ek})
+        perf[nm] = metrics(sp, p_te, y_te, w_te, **_xbt_kw(xbt), **{**KW, **ek})
 
     # ── Table 2: elasticities ─────────────────────────────────────────────
     elast = {}
     for nm, sp, ek, xbt in SPECS:
         try:
+            mdp_kw = ({'xb_prev0': xb_mn, 'q_prev0': qp_mn}
+                      if xbt is not None else {})
             elast[nm] = own_elasticity(sp, p_mn, y_mn,
-                                        xb0=xb_mn if xbt is not None else None,
-                                        **{**KW, **ek})
+                                        **mdp_kw, **{**KW, **ek})
         except Exception as e:
             elast[nm] = np.full(G, np.nan)
 
@@ -595,9 +639,10 @@ def run_once(seed: int) -> dict:
     welf = {}
     for nm, sp, ek, xbt in SPECS:
         try:
+            mdp_kw = ({'xb_prev0': xb_mn, 'q_prev0': qp_mn}
+                      if xbt is not None else {})
             welf[nm] = comp_var(sp, p0w, p1w, y_mn,
-                                xb0=xb_mn if xbt is not None else None,
-                                **{**KW, **ek})
+                                **mdp_kw, **{**KW, **ek})
         except:
             welf[nm] = np.nan
 
@@ -607,28 +652,30 @@ def run_once(seed: int) -> dict:
     r_m  = perf['MDP Neural IRL']['RMSE']
     kl_a = kl_div('aids', p_te, y_te, w_te, **KW)
     kl_n = kl_div('nirl', p_te, y_te, w_te, **KW)
-    kl_m = kl_div('mdp',  p_te, y_te, w_te, xb=xb_te, **KW)
+    kl_m = kl_div('mdp',  p_te, y_te, w_te,
+                  xb_prev=xb_te, q_prev=qp_te, **KW)
 
     # ── Demand curves (for figures) ───────────────────────────────────────
     curves = {}
     curve_specs = [
-        ('aids', {},                                    None,  'LA-AIDS'),
-        ('blp',  {},                                    None,  'BLP (IV)'),
-        ('lirl', {'ff':feat_shared,  'theta':th_sh},   None,  'Lin IRL (Shared)'),
-        ('lirl', {'ff':feat_orth,    'theta':th_or},   None,  'Lin IRL (Orth)'),
-        ('nirl', {},                                    None,  'Neural IRL'),
-        ('mdp',  {},                                    xbr,   'MDP Neural IRL'),
-        ('mix',  {},                                    None,  'Var. Mixture'),
+        ('aids', {},                                    None,              'LA-AIDS'),
+        ('blp',  {},                                    None,              'BLP (IV)'),
+        ('lirl', {'ff':feat_shared,  'theta':th_sh},   None,              'Lin IRL (Shared)'),
+        ('lirl', {'ff':feat_orth,    'theta':th_or},   None,              'Lin IRL (Orth)'),
+        ('nirl', {},                                    None,              'Neural IRL'),
+        ('mdp',  {},                                    (xbr, qpr),        'MDP Neural IRL'),
+        ('mix',  {},                                    None,              'Var. Mixture'),
     ]
     for sp, ek, xbt, lbl in curve_specs:
         try:
-            curves[lbl] = _pred(sp, tpx, fy, xb=xbt, **{**KW, **ek})
+            curves[lbl] = _pred(sp, tpx, fy, **_xbt_kw(xbt), **{**KW, **ek})
         except Exception as e:
             curves[lbl] = np.full((len(pgr), G), np.nan)
 
-    # ── β values ──────────────────────────────────────────────────────────
-    beta_nirl = nirl_m.beta.item()
-    beta_mdp  = mdp_m.beta.item()
+    # ── β and δ values ────────────────────────────────────────────────────
+    beta_nirl  = nirl_m.beta.item()
+    beta_mdp   = mdp_m.beta.item()
+    delta_mdp  = mdp_m.delta.item()
 
     # ── Mixture summary ───────────────────────────────────────────────────
     dk = cdf.loc[cdf.pi.idxmax()]
@@ -639,6 +686,7 @@ def run_once(seed: int) -> dict:
         kl_a=kl_a, kl_n=kl_n, kl_m=kl_m,
         curves=curves,
         beta_nirl=beta_nirl, beta_mdp=beta_mdp,
+        delta_mdp=delta_mdp,
         cdf=cdf, dk=dk,
         hist_n=hist_n, hist_m=hist_m,
         nirl_m=nirl_m, mdp_m=mdp_m,
@@ -754,11 +802,13 @@ kl_a_mu = kl_a_arr.mean(); kl_a_se = kl_a_arr.std(ddof=min(1,N_RUNS-1))
 kl_n_mu = kl_n_arr.mean(); kl_n_se = kl_n_arr.std(ddof=min(1,N_RUNS-1))
 kl_m_mu = kl_m_arr.mean(); kl_m_se = kl_m_arr.std(ddof=min(1,N_RUNS-1))
 
-# Beta stats
-beta_n_arr = np.array([r['beta_nirl'] for r in all_runs])
-beta_m_arr = np.array([r['beta_mdp']  for r in all_runs])
-beta_n_mu  = beta_n_arr.mean(); beta_n_se = beta_n_arr.std(ddof=min(1,N_RUNS-1))
-beta_m_mu  = beta_m_arr.mean(); beta_m_se = beta_m_arr.std(ddof=min(1,N_RUNS-1))
+# Beta and delta stats
+beta_n_arr  = np.array([r['beta_nirl']  for r in all_runs])
+beta_m_arr  = np.array([r['beta_mdp']   for r in all_runs])
+delta_m_arr = np.array([r['delta_mdp']  for r in all_runs])
+beta_n_mu   = beta_n_arr.mean();  beta_n_se  = beta_n_arr.std(ddof=min(1,N_RUNS-1))
+beta_m_mu   = beta_m_arr.mean();  beta_m_se  = beta_m_arr.std(ddof=min(1,N_RUNS-1))
+delta_m_mu  = delta_m_arr.mean(); delta_m_se = delta_m_arr.std(ddof=min(1,N_RUNS-1))
 
 # Use last run for convenience access (backward-compat with original code)
 perf  = last['perf']
@@ -964,12 +1014,12 @@ if N_RUNS > 1:
 # ── Fig 4: Observed vs predicted scatter (last run) ───────────────────────────
 fig4, axes4 = plt.subplots(3, 3, figsize=(14, 12))
 scat_defs = [
-    ('LA-AIDS',       'aids', {},  None,   '#E53935'),
-    ('Neural IRL',    'nirl', {},  None,   '#1E88E5'),
-    ('MDP Neural IRL','mdp',  {},  xb_te,  TEAL),
+    ('LA-AIDS',       'aids', {},  None,               '#E53935'),
+    ('Neural IRL',    'nirl', {},  None,               '#1E88E5'),
+    ('MDP Neural IRL','mdp',  {},  (xb_te, qp_te),    TEAL),
 ]
 for row, (mn, sp, ek, xbt, col) in enumerate(scat_defs):
-    wp = _pred(sp, p_te, y_te, xb=xbt, **{**KW, **ek})
+    wp = _pred(sp, p_te, y_te, **(_xbt_kw(xbt) if xbt else {}), **{**KW, **ek})
     for gi, gn in enumerate(GOODS):
         ax = axes4[row, gi]
         ax.scatter(w_te[:,gi], wp[:,gi], alpha=0.35, s=8, color=col)
@@ -1190,9 +1240,9 @@ tex += L(r'      \bottomrule',
          r'    \end{tabular}',
          r'    \begin{tablenotes}\small',
          rf'      \item RMSE and MAE on held-out test observations, mean $\pm$ std over {N_RUNS} run(s).',
-         r'      MDP Neural IRL augments the state with lagged budget shares',
-         r'      $\bar{x}_t=\delta\bar{x}_{t-1}+(1-\delta)w_{t-1}$ ($\delta=0.7$)',
-         r'      capturing brand-loyalty inertia. Bold: best mean RMSE.',
+        r'      MDP Neural IRL augments the state with lagged quantities',
+        r'      $\bar{x}_t=\hat{\delta}\bar{x}_{t-1}+(1-\hat{\delta})q_{t-1}$ ($\hat{\delta}$ learned)',
+        r'      capturing brand-loyalty inertia. Bold: best mean RMSE.',
          r'    \end{tablenotes}',
          r'  \end{threeparttable}',
          r'\end{table}', '')
@@ -1284,7 +1334,7 @@ for (mn, rm, rs, km, ks, rd) in mdp_rows:
 tex += L(r'      \bottomrule',
          r'    \end{tabular}',
          r'    \begin{tablenotes}\small',
-         r'      \item $\bar{x}_t=\delta\bar{x}_{t-1}+(1-\delta)w_{t-1}$, $\delta=0.7$.',
+         r'      \item $\bar{x}_t=\hat{\delta}\bar{x}_{t-1}+(1-\hat{\delta})q_{t-1}$; $\hat{\delta}$ is learned end-to-end via sigmoid re-parameterisation.',
          r'      Captures repeat-purchase inertia: aspirin loyalists (Bayer, Bufferin)',
          r'      rarely switch to ibuprofen products even under promotional pricing.',
          rf'      RMSE and KL: mean $\pm$ std over {N_RUNS} independent re-estimation(s).',
@@ -1420,7 +1470,7 @@ print(f"""
   ACCURACY (test RMSE, mean ± std):
     LA-AIDS:        {r_a_mu:.5f} ± {r_a_se:.5f}
     Neural IRL:     {r_n_mu:.5f} ± {r_n_se:.5f}  (β̂={beta_n_mu:.4f} ± {beta_n_se:.4f})
-    MDP Neural IRL: {r_m_mu:.5f} ± {r_m_se:.5f}  (β̂={beta_m_mu:.4f} ± {beta_m_se:.4f})
+    MDP Neural IRL: {r_m_mu:.5f} ± {r_m_se:.5f}  (β̂={beta_m_mu:.4f} ± {beta_m_se:.4f}  δ̂={delta_m_mu:.4f} ± {delta_m_se:.4f})
     Best model (by mean RMSE): {bm}
 
   MDP GAIN (using means):

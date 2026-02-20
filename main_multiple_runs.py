@@ -60,7 +60,7 @@ os.makedirs("figures", exist_ok=True)
 
 def predict_shares(spec, p, y, *, aids=None, blp=None, lirl_theta=None,
                    lirl_feat_fn=None, nirl=None, mdp_nirl=None,
-                   xbar=None, consumer=None, mixture=None, device="cpu"):
+                   xbar=None, q_prev=None, consumer=None, mixture=None, device="cpu"):
     if spec == "truth":   return consumer.solve_demand(p, y)
     if spec == "aids":    return aids.predict(p, y)
     if spec == "blp":     return blp.predict(p)
@@ -72,35 +72,41 @@ def predict_shares(spec, p, y, *, aids=None, blp=None, lirl_theta=None,
             return nirl(lp,ly).cpu().numpy()
     if spec == "mdp-irl":
         with torch.no_grad():
-            lp = torch.log(torch.tensor(p,    dtype=torch.float32, device=device))
-            ly = torch.log(torch.tensor(y,    dtype=torch.float32, device=device)).unsqueeze(1)
-            xb = torch.tensor(xbar,           dtype=torch.float32, device=device)
-            return mdp_nirl(lp,ly,xb).cpu().numpy()
+            lp  = torch.log(torch.tensor(p,         dtype=torch.float32, device=device))
+            ly  = torch.log(torch.tensor(y,         dtype=torch.float32, device=device)).unsqueeze(1)
+            xbp = torch.log(torch.clamp(torch.tensor(xbar,   dtype=torch.float32, device=device), min=1e-6))
+            qp  = torch.log(torch.clamp(torch.tensor(q_prev, dtype=torch.float32, device=device), min=1e-6))
+            return mdp_nirl(lp, ly, xbp, qp).cpu().numpy()
     if spec == "mixture": return mixture.predict(p, y)
     raise ValueError(spec)
 
-def compute_elasticities(spec, p_pt, y_pt, h=1e-4, xbar_pt=None, **kw):
+def compute_elasticities(spec, p_pt, y_pt, h=1e-4, xbar_pt=None, q_prev_pt=None, **kw):
     w0  = predict_shares(spec, p_pt.reshape(1,-1), np.array([y_pt]),
-                         xbar=xbar_pt.reshape(1,-1) if xbar_pt is not None else None, **kw)[0]
+                         xbar=xbar_pt.reshape(1,-1) if xbar_pt is not None else None,
+                         q_prev=q_prev_pt.reshape(1,-1) if q_prev_pt is not None else None,
+                         **kw)[0]
     eps = []
     for i in range(3):
         p1 = p_pt.copy().reshape(1,-1); p1[0,i] *= (1+h)
         wp = predict_shares(spec, p1, np.array([y_pt]),
-                            xbar=xbar_pt.reshape(1,-1) if xbar_pt is not None else None, **kw)[0]
+                            xbar=xbar_pt.reshape(1,-1) if xbar_pt is not None else None,
+                            q_prev=q_prev_pt.reshape(1,-1) if q_prev_pt is not None else None,
+                            **kw)[0]
         eps.append(((wp[i]-w0[i])/w0[i])/h - 1)
     return eps
 
-def compute_welfare_loss(spec, p0, p1, y, steps=100, xbar_pt=None, **kw):
+def compute_welfare_loss(spec, p0, p1, y, steps=100, xbar_pt=None, q_prev_pt=None, **kw):
     path = np.linspace(p0,p1,steps); dp = (p1-p0)/steps; loss = 0.0
     for t in range(steps):
         w    = predict_shares(spec, path[t:t+1], np.array([y]),
                               xbar=xbar_pt.reshape(1,-1) if xbar_pt is not None else None,
+                              q_prev=q_prev_pt.reshape(1,-1) if q_prev_pt is not None else None,
                               **kw)[0]
         loss -= (w*y/path[t]) @ dp
     return loss
 
-def get_metrics(spec, p_shock, income, w_true, xbar_shock=None, **kw):
-    wp = predict_shares(spec, p_shock, income, xbar=xbar_shock, **kw)
+def get_metrics(spec, p_shock, income, w_true, xbar_shock=None, q_prev_shock=None, **kw):
+    wp = predict_shares(spec, p_shock, income, xbar=xbar_shock, q_prev=q_prev_shock, **kw)
     return {"RMSE": np.sqrt(mean_squared_error(w_true, wp)),
             "MAE":  mean_absolute_error(w_true, wp)}
 
@@ -142,6 +148,19 @@ def run_one_seed(seed: int, verbose: bool = False) -> dict:
     w_post_true      = primary.solve_demand(p_post, income)
     w_habit_shock, xbar_shock = habit_consumer.solve_demand(p_post, income, return_xbar=True)
 
+    # ── Compute previous-period quantities for MDP model ──────────────────
+    # q_train[i] ≈ quantity vector at observation i (from budget shares)
+    q_train = w_habit * income[:, None] / np.maximum(p_pre, 1e-8)
+    # q_prev_train[i] = quantities at period i-1 (first obs uses its own value)
+    q_prev_train = np.zeros_like(q_train)
+    q_prev_train[0]  = q_train[0]
+    q_prev_train[1:] = q_train[:-1]
+
+    q_shock = w_habit_shock * income[:, None] / np.maximum(p_post, 1e-8)
+    q_prev_shock = np.zeros_like(q_shock)
+    q_prev_shock[0]  = q_shock[0]
+    q_prev_shock[1:] = q_shock[:-1]
+
     avg_p    = p_post.mean(0)
     p_pre_pt = avg_p / np.array([1.0, 1.2, 1.0])
 
@@ -174,7 +193,8 @@ def run_one_seed(seed: int, verbose: bool = False) -> dict:
     mdp_irl, hist_mdp = train_neural_irl(
         mdp_irl, p_pre, income, w_habit, epochs=4000, lr=5e-4,
         batch_size=256, lam_mono=0.3, lam_slut=0.1, slut_start_frac=0.25,
-        xbar_data=xbar_train, device=DEVICE, verbose=verbose)
+        xb_prev_data=xbar_train, q_prev_data=q_prev_train,
+        device=DEVICE, verbose=verbose)
 
     # ── Variational Mixture ───────────────────────────────────────────
     var_mix = ContinuousVariationalMixture(K=6, n_goods=3, n_samples_per_component=100)
@@ -242,17 +262,20 @@ def run_one_seed(seed: int, verbose: bool = False) -> dict:
     rmse_aids_h = get_metrics("aids",    p_post,income,w_habit_shock, aids=aids_hab)["RMSE"]
     rmse_nirl_h = get_metrics("n-irl",   p_post,income,w_habit_shock, nirl=n_irl_hab,device=DEVICE)["RMSE"]
     rmse_mdp_h  = get_metrics("mdp-irl", p_post,income,w_habit_shock,
-                               mdp_nirl=mdp_irl,xbar_shock=xbar_shock,device=DEVICE)["RMSE"]
+                               mdp_nirl=mdp_irl, xbar_shock=xbar_shock,
+                               q_prev_shock=q_prev_shock, device=DEVICE)["RMSE"]
 
     kl_aids   = kl_div(aids_hab.predict(p_post,income), w_habit_shock)
     kl_static = kl_div(predict_shares("n-irl",p_post,income,nirl=n_irl_hab,device=DEVICE), w_habit_shock)
     kl_mdp    = kl_div(predict_shares("mdp-irl",p_post,income,
-                                       mdp_nirl=mdp_irl,xbar=xbar_shock,device=DEVICE), w_habit_shock)
+                                       mdp_nirl=mdp_irl, xbar=xbar_shock,
+                                       q_prev=q_prev_shock, device=DEVICE), w_habit_shock)
 
     # ── Demand curve arrays on fixed price grid ───────────────────────
     test_p       = np.tile(p_pre.mean(0),(80,1)); test_p[:,1] = P_GRID
     fixed_y      = np.full(80, AVG_Y)
     xbar_rep     = np.tile(xbar_train.mean(0),(80,1))
+    q_prev_rep   = np.tile(q_prev_train.mean(0),(80,1))
 
     # CES comparison: food share only → (80,)
     curves = {
@@ -297,7 +320,8 @@ def run_one_seed(seed: int, verbose: bool = False) -> dict:
         "LA-AIDS":           predict_shares("aids",    test_p,fixed_y,aids=aids_hab),
         "Neural IRL static": predict_shares("n-irl",   test_p,fixed_y,nirl=n_irl_hab,device=DEVICE),
         "MDP-IRL":           predict_shares("mdp-irl", test_p,fixed_y,
-                                             mdp_nirl=mdp_irl,xbar=xbar_rep,device=DEVICE),
+                                             mdp_nirl=mdp_irl, xbar=xbar_rep,
+                                             q_prev=q_prev_rep, device=DEVICE),
     }
 
     return {
@@ -310,6 +334,7 @@ def run_one_seed(seed: int, verbose: bool = False) -> dict:
                 "kl_aids":kl_aids,"kl_static":kl_static,"kl_mdp":kl_mdp},
         "beta_nirl":    n_irl.beta.item(),
         "beta_mdp":     mdp_irl.beta.item(),
+        "delta_mdp":    mdp_irl.delta.item(),
         "shock_pt":     p_pre[:,1].mean() * 1.2,
         "curves":       curves,        # {model: (80,)}
         "mdp_curves":   mdp_curves,    # {model: (80,3)}
@@ -338,7 +363,7 @@ for run_idx in range(N_RUNS):
     all_results.append(r)
     print(f"   Done in {time.time()-t0:.0f}s  "
           f"| Neural IRL RMSE={r['perf_ces']['Neural IRL']['RMSE']:.5f}"
-          f"  β={r['beta_nirl']:.3f}")
+          f"  β={r['beta_nirl']:.3f}  δ={r['delta_mdp']:.3f}")
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -399,11 +424,13 @@ for nm in lin_names:
         lin_agg.setdefault(nm,{})[f"{metric}_mean"] = np.nanmean(vals)
         lin_agg.setdefault(nm,{})[f"{metric}_se"]   = _se(vals)
 
-# Beta
-beta_nirl_mean = np.mean([r["beta_nirl"] for r in all_results])
-beta_nirl_se   = _se([r["beta_nirl"] for r in all_results])
-beta_mdp_mean  = np.mean([r["beta_mdp"]  for r in all_results])
-beta_mdp_se    = _se([r["beta_mdp"]  for r in all_results])
+# Beta and delta
+beta_nirl_mean  = np.mean([r["beta_nirl"]  for r in all_results])
+beta_nirl_se    = _se([r["beta_nirl"]  for r in all_results])
+beta_mdp_mean   = np.mean([r["beta_mdp"]   for r in all_results])
+beta_mdp_se     = _se([r["beta_mdp"]   for r in all_results])
+delta_mdp_mean  = np.mean([r["delta_mdp"]  for r in all_results])
+delta_mdp_se    = _se([r["delta_mdp"]  for r in all_results])
 
 # Demand curve arrays: mean ± SE across runs (shape (80,) per model)
 curve_models = list(all_results[0]["curves"].keys())
@@ -455,6 +482,7 @@ for lbl,kr,kk in [("LA-AIDS","aids_rmse","kl_aids"),
           f"KL={fmt(mdp_agg[kk]['mean'],mdp_agg[kk]['se'])}")
 print(f"\n  β̂ Neural IRL: {fmt(beta_nirl_mean,beta_nirl_se,4)}")
 print(f"  β̂ MDP IRL:    {fmt(beta_mdp_mean,  beta_mdp_se, 4)}")
+print(f"  δ̂ MDP IRL:    {fmt(delta_mdp_mean, delta_mdp_se, 4)}  (learnable habit-decay)")
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -882,7 +910,8 @@ lx(f"    \\item Mean (SE) across {N_RUNS} runs. All models trained on identical 
 lx(r"    RMSE reduction relative to LA-AIDS mean; SE propagated via delta method.")
 lx(rf"    $\hat{{\beta}}$: Neural IRL = {beta_nirl_mean:.3f} ({beta_nirl_se:.3f}); "
    rf"MDP IRL = {beta_mdp_mean:.3f} ({beta_mdp_se:.3f}). "
-   r"$\theta=0.3$, $\delta=0.7$.")
+   rf"$\hat{{\delta}}$ (learned habit-decay): MDP IRL = {delta_mdp_mean:.3f} ({delta_mdp_se:.3f}). "
+   r"$\theta=0.3$.")
 lx(r"  \end{tablenotes}")
 lx(r"  \end{threeparttable}")
 lx(r"\end{table}")
