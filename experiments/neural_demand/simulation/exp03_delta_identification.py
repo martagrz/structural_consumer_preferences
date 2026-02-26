@@ -74,6 +74,8 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
     EPOCHS    = cfg["EPOCHS"]
     TRUE_DELTA = float(cfg.get("TRUE_DELTA", 0.7))
     HIDDEN    = int(cfg.get("hidden_dim", 128))
+    CACHE_DIR = cfg.get("model_cache_dir")
+    FORCE_RETRAIN = cfg.get("force_retrain", False)
 
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -110,6 +112,8 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
         hidden_dim=HIDDEN,
         device=DEVICE,
         tag=f"nd-delta-id-s{seed}",
+        cache_dir=CACHE_DIR,
+        force_retrain=FORCE_RETRAIN,
     )
 
     return dict(
@@ -342,7 +346,7 @@ def run(cfg: dict) -> tuple:
 
     all_results = []
     for ri in range(N_RUNS):
-        seed = 300 + ri * 19
+        seed = 42 + ri * 15
         t0   = time.time()
         print(f"  Run {ri+1}/{N_RUNS}  seed={seed}")
         r = run_one_seed(seed, cfg, verbose=(ri == N_RUNS - 1))

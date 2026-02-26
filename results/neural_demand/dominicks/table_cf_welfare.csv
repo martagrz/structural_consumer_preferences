@@ -6,7 +6,7 @@ Series Est.,-0.2333,0.0
 LDS (Shared),-0.285654,0.0
 LDS (GoodSpec),-0.285995,0.0
 LDS (Orth),-0.256126,0.0
-Neural Demand (static),-0.227968,0.002492
-Neural Demand (habit),-0.206362,0.001053
-Neural Demand (CF),-0.228343,0.00509
-"Neural Demand (habit, CF)",-0.215515,0.000228
+Neural Demand (static),-0.232837,0.002222
+Neural Demand (habit),-0.225031,0.001113
+Neural Demand (CF),-0.23059,0.001726
+"Neural Demand (habit, CF)",-0.230738,0.004157

@@ -36,7 +36,7 @@ import torch
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-EPOCHS = 2000 
+EPOCHS = 5000 
 
 np.random.seed(42)
 torch.manual_seed(42)
@@ -65,7 +65,7 @@ BASE_CFG = dict(
     # Neural IRL (static)
     nirl_hidden      = 128,
     nirl_epochs      = EPOCHS,
-    nirl_lr          = 5e-4,
+    nirl_lr          = 1e-4,
     nirl_batch       = 256,
     nirl_lam_mono    = 0.2,
     nirl_lam_slut    = 0.05,
@@ -74,7 +74,7 @@ BASE_CFG = dict(
     # MDP / Habit neural IRL
     mdp_hidden       = 128,
     mdp_epochs       = EPOCHS,
-    mdp_lr           = 5e-4,
+    mdp_lr           = 1e-4,
     mdp_batch        = 256,
     mdp_lam_mono     = 0.3,
     mdp_lam_slut     = 0.1,
@@ -83,7 +83,7 @@ BASE_CFG = dict(
     # MDP E2E (habit-augmented Neural Demand)
     mdp_e2e_hidden       = 128,
     mdp_e2e_epochs       = EPOCHS,
-    mdp_e2e_lr           = 5e-4,
+    mdp_e2e_lr           = 1e-4,
     mdp_e2e_batch        = 256,
     mdp_e2e_lam_mono     = 0.3,
     mdp_e2e_lam_slut     = 0.1,
@@ -101,6 +101,7 @@ BASE_CFG = dict(
     # Outputs
     out_dir = "results/neural_demand/dominicks",
     fig_dir = "results/neural_demand/dominicks/figures",
+    # model_cache_dir set dynamically in main()
 )
 
 FAST_CFG = dict(
@@ -125,6 +126,8 @@ def _parse_args():
                    help="Path to Dominick's UPC catalogue CSV")
     p.add_argument("--fast",   action="store_true",
                    help="Use reduced settings for quick testing")
+    p.add_argument("--load",   action="store_true",
+                   help="Load pre-trained models from cache (default: train from scratch)")
     p.add_argument("--exp", nargs="+", type=str, default=None,
                    help="Experiments to run: 01 02 03 04 05 06 07 (default: all)")
     return p.parse_args()
@@ -244,7 +247,13 @@ def main():
     cfg = dict(BASE_CFG)
     if args.fast:
         cfg.update(FAST_CFG)
+        cfg["model_cache_dir"] = "results/neural_demand/dominicks/models/fast"
         print("[fast mode] Using reduced N_RUNS / training epochs")
+    else:
+        cfg["model_cache_dir"] = "results/neural_demand/dominicks/models/full"
+
+    # If --load is NOT set, force retraining (ignore existing cache but save new models)
+    cfg["force_retrain"] = not args.load
 
     if args.weekly:
         cfg["weekly_path"] = args.weekly

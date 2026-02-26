@@ -25,6 +25,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import os
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -374,23 +375,32 @@ def train_mdp_e2e(model, prices, income, w_expert, log_q_seq,
                   store_ids=None, epochs=3000, lr=5e-4, batch_size=256,
                   lam_mono=0.2, lam_slut=0.1, slut_start_frac=0.25,
                   xbar_recompute_every=1, delta_lr_scale=0.1, device="cpu",
-                  verbose=False, tag="", store_idx=None):
+                  verbose=False, tag="", store_idx=None, cache_dir=None,
+                  force_retrain=False):
     """Train MDPNeuralIRL_E2E.
 
-    At the start of every *xbar_recompute_every* epochs the habit stock x̄ is
-    recomputed for all N observations using the model's current δ so that the
-    gradient of the KL loss w.r.t. δ flows through the x̄ computation.
-
-    Parameters
-    ----------
-    log_q_seq : (N, G) ndarray — log-quantities (or log-shares) in the SAME
-                sequential order as prices / income / w_expert.
-    store_ids : (N,) int array or None — resets x̄ at store boundaries.
-    xbar_recompute_every : int — recompute x̄ every this many epochs.
-                Smaller values give more accurate gradients through δ at the
-                cost of O(N) sequential ops per recompute step.  Default = 1.
+    Includes caching: if a model with the same 'tag' exists in
+    cache_dir, it is loaded instead of retrained.
     """
     model = model.to(device)
+
+    # ── Cache Check ──────────────────────────────────────────────────────────
+    if cache_dir is not None:
+        os.makedirs(cache_dir, exist_ok=True)
+        safe_tag = tag.replace(" ", "_").replace("=", "").replace("-", "_")
+        cache_path = os.path.join(cache_dir, f"{safe_tag}.pt")
+
+        if os.path.exists(cache_path) and not force_retrain:
+            if verbose:
+                print(f"    [Cache] Loading {tag} from {cache_path}")
+            try:
+                checkpoint = torch.load(cache_path, map_location=device, weights_only=False)
+                model.load_state_dict(checkpoint["model_state_dict"])
+                model.eval()
+                return model, checkpoint.get("history", [])
+            except Exception as e:
+                print(f"    [Cache] Failed to load {cache_path}: {e}. Retraining.")
+
     # Detect whether this is a store-FE model
     _fe = (store_idx is not None) and hasattr(model, 'store_emb')
     SI  = torch.tensor(store_idx, dtype=torch.long).to(device) if _fe else None
@@ -501,6 +511,17 @@ def train_mdp_e2e(model, prices, income, w_expert, log_q_seq,
 
     if best_state:
         model.load_state_dict(best_state)
+
+    # ── Save to Cache ────────────────────────────────────────────────────────
+    if cache_dir is not None:
+        try:
+            torch.save({
+                "model_state_dict": model.state_dict(),
+                "history": history,
+            }, cache_path)
+        except Exception as e:
+            print(f"    [Cache] Failed to save {cache_path}: {e}")
+
     model.eval()
     return model, history
 
@@ -512,15 +533,32 @@ def train_mdp_e2e(model, prices, income, w_expert, log_q_seq,
 def train_window_irl(model, window_feats, w_expert,
                      epochs=3000, lr=5e-4, batch_size=256,
                      lam_mono=0.2, lam_slut=0.1, slut_start_frac=0.25,
-                     device="cpu", verbose=False, tag=""):
+                     device="cpu", verbose=False, tag="", cache_dir=None,
+                     force_retrain=False):
     """Train WindowIRL on pre-built window feature matrix.
 
-    Parameters
-    ----------
-    window_feats : (N, in_dim) ndarray — output of build_window_features().
-    w_expert     : (N, G)     ndarray — observed budget shares (targets).
+    Includes caching: if a model with the same 'tag' exists in
+    cache_dir, it is loaded instead of retrained.
     """
     model = model.to(device)
+
+    # ── Cache Check ──────────────────────────────────────────────────────────
+    if cache_dir is not None:
+        os.makedirs(cache_dir, exist_ok=True)
+        safe_tag = tag.replace(" ", "_").replace("=", "").replace("-", "_")
+        cache_path = os.path.join(cache_dir, f"{safe_tag}.pt")
+
+        if os.path.exists(cache_path) and not force_retrain:
+            if verbose:
+                print(f"    [Cache] Loading {tag} from {cache_path}")
+            try:
+                checkpoint = torch.load(cache_path, map_location=device, weights_only=False)
+                model.load_state_dict(checkpoint["model_state_dict"])
+                model.eval()
+                return model, checkpoint.get("history", [])
+            except Exception as e:
+                print(f"    [Cache] Failed to load {cache_path}: {e}. Retraining.")
+
     # Adam (not SGD): the scalar log_beta parameter benefits from adaptive
     # per-parameter step sizes, preventing the β oscillations seen with SGD.
     opt = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
@@ -579,5 +617,16 @@ def train_window_irl(model, window_feats, w_expert,
 
     if best_state:
         model.load_state_dict(best_state)
+
+    # ── Save to Cache ────────────────────────────────────────────────────────
+    if cache_dir is not None:
+        try:
+            torch.save({
+                "model_state_dict": model.state_dict(),
+                "history": history,
+            }, cache_path)
+        except Exception as e:
+            print(f"    [Cache] Failed to save {cache_path}: {e}")
+
     model.eval()
     return model, history

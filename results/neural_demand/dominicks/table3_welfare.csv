@@ -3,15 +3,15 @@ LA-AIDS,-23.218241,0.0,2
 BLP (IV),-22.117644,0.0,2
 QUAIDS,-23.391577,0.0,2
 Series Est.,-23.329975,0.0,2
-Neural Demand (window),-23.321416,0.444571,2
+Neural Demand (window),-23.125071,0.531645,2
 LDS (Shared),-28.565385,0.0,2
 LDS (GoodSpec),-28.599504,0.0,2
 LDS (Orth),-25.612607,0.0,2
-Neural Demand (static),-23.458262,0.078354,2
-Neural Demand (habit),-21.361411,0.134189,2
-Neural Demand (FE),-23.138346,0.11822,2
-"Neural Demand (habit, FE)",-21.473235,0.76296,2
-Neural Demand (CF),-23.135049,0.687043,2
-"Neural Demand (habit, CF)",-21.291012,0.275359,2
-"Neural Demand (habit, FE, CF)",-21.469302,0.083483,2
-Neural Demand (placebo),-23.490607,0.09433,2
+Neural Demand (static),-23.283732,0.314287,2
+Neural Demand (habit),-22.766222,0.480488,2
+Neural Demand (FE),-23.026286,0.088743,2
+"Neural Demand (habit, FE)",-22.7883,0.221091,2
+Neural Demand (CF),-23.056084,0.278007,2
+"Neural Demand (habit, CF)",-22.650814,0.840274,2
+"Neural Demand (habit, FE, CF)",-23.246951,0.343346,2
+Neural Demand (placebo),-23.337782,0.099305,2

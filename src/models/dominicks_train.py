@@ -4,34 +4,38 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import os
 
 
 def train_dominicks(model, p_tr, y_tr, w_tr, pfx, cfg,
                     xb_prev_tr=None, q_prev_tr=None, tag="",
                     store_idx_tr=None, v_hat_tr=None):
     """Shared training loop for NeuralIRL / MDPNeuralIRL in Dominicks pipeline.
-
-    Parameters
-    ----------
-    xb_prev_tr : ndarray (N, G) or None
-        Pre-processed log of the previous-period habit stock x̄_{t-1}
-        (normalised to log-price scale by the caller).  Passed only for
-        MDPNeuralIRL; None → NeuralIRL branch.
-    q_prev_tr : ndarray (N, G) or None
-        Pre-processed log of the previous-period quantities q_{t-1},
-        using the *same* normalisation as xb_prev_tr.
-    store_idx_tr : ndarray (N,) of int or None
-        Integer store indices ∈ {0, …, n_stores-1}, one per observation.
-        When provided and the model has a ``store_emb`` attribute, the store
-        embedding is concatenated to the input (store-FE models only).
-    v_hat_tr : ndarray (N, G) or None
-        First-stage OLS residuals for the control-function endogeneity
-        correction.  When provided and the model has ``n_cf > 0``, v_hat is
-        appended to the network input.  Pass None (default) to disable CF.
+    
+    Includes caching: if a model with the same 'tag' exists in
+    cfg['model_cache_dir'], it is loaded instead of retrained.
     """
 
     dev = cfg["device"]
     model = model.to(dev)
+
+    # ── Cache Check ──────────────────────────────────────────────────────────
+    cache_dir = cfg.get("model_cache_dir", "results/neural_demand/dominicks/models")
+    os.makedirs(cache_dir, exist_ok=True)
+    safe_tag = tag.replace(" ", "_").replace("=", "").replace("-", "_")
+    cache_path = os.path.join(cache_dir, f"{safe_tag}.pt")
+
+    if os.path.exists(cache_path) and not cfg.get("force_retrain", False):
+        print(f"    [Cache] Loading {tag} from {cache_path}")
+        try:
+            checkpoint = torch.load(cache_path, map_location=dev, weights_only=False)
+            model.load_state_dict(checkpoint["model_state_dict"])
+            model.eval()
+            return model, checkpoint.get("history", [])
+        except Exception as e:
+            print(f"    [Cache] Failed to load {cache_path}: {e}. Retraining.")
+
+    # ── Training Setup ───────────────────────────────────────────────────────
     # Detect store-FE model: has an nn.Embedding 'store_emb' attribute
     _fe = (store_idx_tr is not None) and hasattr(model, 'store_emb')
     SI  = torch.tensor(store_idx_tr, dtype=torch.long).to(dev) if _fe else None
@@ -138,5 +142,16 @@ def train_dominicks(model, p_tr, y_tr, w_tr, pfx, cfg,
 
     if best_sd:
         model.load_state_dict(best_sd)
+    
+    # ── Save to Cache ────────────────────────────────────────────────────────
+    try:
+        torch.save({
+            "model_state_dict": model.state_dict(),
+            "history": hist,
+            "cfg": cfg,
+        }, cache_path)
+    except Exception as e:
+        print(f"    [Cache] Failed to save {cache_path}: {e}")
+
     model.eval()
     return model, hist

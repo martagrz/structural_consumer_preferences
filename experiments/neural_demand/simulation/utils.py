@@ -285,6 +285,8 @@ def fit_neural_demand_delta_grid(
     se_multiplier = 2.0,
     device        = "cpu",
     tag           = "nd-habit-delta",
+    cache_dir     = None,
+    force_retrain = False,
 ):
     """Train one frozen-δ Neural Demand (habit) model per grid point.
 
@@ -323,6 +325,8 @@ def fit_neural_demand_delta_grid(
             xbar_recompute_every=10,
             device=device,
             tag=f"{tag}-d{d:.2f}",
+            cache_dir=cache_dir,
+            force_retrain=force_retrain,
         )
 
         # validation KL

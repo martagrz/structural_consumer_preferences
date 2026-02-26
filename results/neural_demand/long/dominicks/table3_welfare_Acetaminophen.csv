@@ -1,0 +1,17 @@
+Model,CV_Loss_mean,CV_Loss_std,n_runs
+LA-AIDS,-53.207636,0.0,2
+BLP (IV),-47.972531,0.0,2
+QUAIDS,-52.914371,0.0,2
+Series Est.,-51.283473,0.0,2
+Neural Demand (window),-58.419718,0.721988,2
+LDS (Shared),-46.152891,0.0,2
+LDS (GoodSpec),-46.129761,0.0,2
+LDS (Orth),-57.03142,0.0,2
+Neural Demand (static),-59.101304,0.216828,2
+Neural Demand (habit),-57.016467,0.482017,2
+Neural Demand (FE),-59.18189,0.012302,2
+"Neural Demand (habit, FE)",-57.936116,0.467524,2
+Neural Demand (CF),-58.653438,0.068592,2
+"Neural Demand (habit, CF)",-55.739533,0.641403,2
+"Neural Demand (habit, FE, CF)",-57.426683,0.012827,2
+Neural Demand (placebo),-58.509174,0.918675,2

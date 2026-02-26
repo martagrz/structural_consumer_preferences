@@ -144,6 +144,8 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
     EPOCHS  = cfg["EPOCHS"]
     RHO_GRID = cfg.get("RHO_GRID", [0.0, 0.3, 0.6, 0.9])
     DELTA_HAB = cfg.get("DELTA_HAB", 0.7)   # fixed δ for habit model
+    CACHE_DIR = cfg.get("model_cache_dir")
+    FORCE_RETRAIN = cfg.get("force_retrain", False)
 
     rows     = []
     rsq_rows = []
@@ -203,7 +205,10 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
                 nds, p_obs, y_tr, w_obs_tr,
                 epochs=EPOCHS, lr=5e-4, batch_size=256,
                 lam_mono=0.3, lam_slut=0.1,
-                device=DEVICE, verbose=False)
+                device=DEVICE, verbose=False,
+                tag=f"nds-static-cfendo-{dgp_name}-r{rho}-s{seed}",
+                cache_dir=CACHE_DIR,
+                force_retrain=FORCE_RETRAIN)
 
             # 2. Static + CF
             nds_cf = NeuralIRL(n_goods=3, hidden_dim=cfg.get("hidden_dim", 128), n_cf=3)
@@ -212,7 +217,10 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
                 epochs=EPOCHS, lr=5e-4, batch_size=256,
                 lam_mono=0.3, lam_slut=0.1,
                 v_hat_data=v_hat_tr,
-                device=DEVICE, verbose=False)
+                device=DEVICE, verbose=False,
+                tag=f"nds-cf-cfendo-{dgp_name}-r{rho}-s{seed}",
+                cache_dir=CACHE_DIR,
+                force_retrain=FORCE_RETRAIN)
 
             # 3. Habit (uncorrected) — MDPNeuralIRL with fixed delta
             nds_hab = MDPNeuralIRL(n_goods=3, hidden_dim=cfg.get("hidden_dim", 128),
@@ -223,7 +231,10 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
                 lam_mono=0.3, lam_slut=0.1,
                 xb_prev_data=np.exp(xbar_all),   # train_neural_irl log-transforms internally
                 q_prev_data=np.exp(q_prev),
-                device=DEVICE, verbose=False)
+                device=DEVICE, verbose=False,
+                tag=f"nds-hab-cfendo-{dgp_name}-r{rho}-s{seed}",
+                cache_dir=CACHE_DIR,
+                force_retrain=FORCE_RETRAIN)
 
             # 4. Habit + CF
             nds_hab_cf = MDPNeuralIRL(n_goods=3, hidden_dim=cfg.get("hidden_dim", 128),
@@ -235,7 +246,10 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
                 xb_prev_data=np.exp(xbar_all),
                 q_prev_data=np.exp(q_prev),
                 v_hat_data=v_hat_tr,
-                device=DEVICE, verbose=False)
+                device=DEVICE, verbose=False,
+                tag=f"nds-hab-cf-cfendo-{dgp_name}-r{rho}-s{seed}",
+                cache_dir=CACHE_DIR,
+                force_retrain=FORCE_RETRAIN)
 
             # ── Evaluate at TEST structural prices (v_hat = 0) ────────────────
             # "Structural demand" = what we'd observe without the endogenous shock
@@ -285,13 +299,25 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
                 ("Neural Demand (habit)",      nds_hab,    xbar_te, q_prev_te),
                 ("Neural Demand (habit, CF)",  nds_hab_cf, xbar_te, q_prev_te),
             ]:
-                try:
+                # Determine spec based on model type
+                if getattr(m_obj, "n_cf", 0) > 0:
+                    # Model expects CF residuals
                     w_pred = predict_shares(
                         "nd-habit-cf", p_te_struct, y_te,
                         nds_hab_cf=m_obj,
                         xbar_hab=xb_te, q_prev_hab=qp_te,
                         v_hat=zeros_te,
                         device=DEVICE)
+                else:
+                    # Model does not use CF residuals
+                    w_pred = predict_shares(
+                        "nd-habit", p_te_struct, y_te,
+                        nds_hab=m_obj,
+                        xbar_hab=xb_te, q_prev_hab=qp_te,
+                        v_hat=None,
+                        device=DEVICE)
+
+                try:
                     rmse = float(np.sqrt(np.mean((w_pred - w_te_struct) ** 2)))
                     mae  = float(np.mean(np.abs(w_pred - w_te_struct)))
                 except Exception as exc:

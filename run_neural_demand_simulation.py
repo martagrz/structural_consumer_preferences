@@ -48,7 +48,7 @@ BASE_CFG = dict(
     # Experiment-level
     N_RUNS   = 5,
     N_OBS    = 800,
-    EPOCHS   = 2000,
+    EPOCHS   = 5000,
     DEVICE   = DEVICE,
 
     # Neural Demand (static) hyper-params
@@ -65,6 +65,7 @@ BASE_CFG = dict(
     # Output paths
     out_dir = "results/neural_demand/simulations",
     fig_dir = "results/neural_demand/simulations/figures",
+    # model_cache_dir set dynamically in main() based on fast/full mode
 )
 
 # "Fast" override for rapid development / CI
@@ -85,6 +86,8 @@ def _parse_args():
     p = argparse.ArgumentParser(description="Neural Demand simulation experiments")
     p.add_argument("--fast", action="store_true",
                    help="Use reduced settings for quick testing")
+    p.add_argument("--load", action="store_true",
+                   help="Load pre-trained models from cache (default: train from scratch)")
     p.add_argument("--exp", nargs="+", type=str, default=None,
                    help="Experiments to run: 01 02 03 04 (default: all)")
     return p.parse_args()
@@ -283,6 +286,8 @@ def _plot_demand_curves_by_good(agg2: dict, fig_dir: str,
 
     p_grid  = np.linspace(1, 10, 80)
     ordered = ["Truth"] + [k for k in curves_mean.keys() if k != "Truth"]
+    if dgp_label == "Habit":
+        ordered = [k for k in ordered if k not in ("LDS (Shared)", "LDS (GoodSpec)")]
 
     for good_idx, ylabel in enumerate(_GOOD_YLABEL):
         fig, ax = plt.subplots(figsize=(8, 5))
@@ -517,6 +522,7 @@ def _plot_habit_rmse_bar(agg2: dict, fig_dir: str) -> None:
         return
 
     model_names = list(rmse_agg.keys())
+    model_names = [m for m in model_names if m not in ("LDS (Shared)", "LDS (GoodSpec)")]
     means = [rmse_agg[nm]["mean"] for nm in model_names]
     ses   = [rmse_agg[nm]["se"]   for nm in model_names]
     disps = [_MODEL_DISPLAY.get(nm, nm) for nm in model_names]
@@ -800,7 +806,13 @@ def main():
     if args.fast:
         cfg.update(FAST_CFG)
         cfg["FAST_DELTA_GRID"] = np.array([0.3, 0.5, 0.7, 0.9])
+        cfg["model_cache_dir"] = "results/neural_demand/simulations/models/fast"
         print("[fast mode] Using reduced N_OBS / EPOCHS / N_RUNS / DELTA_GRID")
+    else:
+        cfg["model_cache_dir"] = "results/neural_demand/simulations/models/full"
+
+    # If --load is NOT set, force retraining (ignore existing cache but save new models)
+    cfg["force_retrain"] = not args.load
 
     os.makedirs(cfg["out_dir"], exist_ok=True)
     os.makedirs(cfg["fig_dir"], exist_ok=True)

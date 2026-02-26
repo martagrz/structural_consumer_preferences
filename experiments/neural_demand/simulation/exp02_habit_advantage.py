@@ -104,6 +104,8 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
     HIDDEN     = cfg.get("hidden_dim", 128)
     DELTA_HAB  = cfg.get("DELTA_HAB",
                          float(np.asarray(DELTA_GRID)[len(DELTA_GRID) // 2]))
+    CACHE_DIR  = cfg.get("model_cache_dir")
+    FORCE_RETRAIN = cfg.get("force_retrain", False)
 
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -161,7 +163,10 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
         nds_static, p_pre, income, w_hab,
         epochs=EPOCHS, lr=5e-4, batch_size=256,
         lam_mono=0.2, lam_slut=0.05, slut_start_frac=0.3,
-        device=DEVICE, verbose=verbose)
+        device=DEVICE, verbose=verbose,
+        tag=f"nds-static-habadv-s{seed}",
+        cache_dir=CACHE_DIR,
+        force_retrain=FORCE_RETRAIN)
 
     # ── CF first-stage residuals ───────────────────────────────────────────────
     v_hat_tr, _ = cf_first_stage(np.log(np.maximum(p_pre, 1e-8)), Z)
@@ -175,7 +180,10 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
             epochs=EPOCHS, lr=5e-4, batch_size=256,
             lam_mono=0.2, lam_slut=0.05, slut_start_frac=0.3,
             v_hat_data=v_hat_tr,
-            device=DEVICE, verbose=False)
+            device=DEVICE, verbose=False,
+            tag=f"nds-cf-habadv-s{seed}",
+            cache_dir=CACHE_DIR,
+            force_retrain=FORCE_RETRAIN)
     except Exception as exc:
         if verbose:
             print(f"    [ND-static-CF fit failed: {exc}]")
@@ -191,6 +199,8 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
         hidden_dim=HIDDEN,
         device=DEVICE,
         tag=f"nd-habit-s{seed}",
+        cache_dir=CACHE_DIR,
+        force_retrain=FORCE_RETRAIN,
     )
     nds_hab   = sweep["best_model"]
     delta_hat = sweep["delta_hat"]
@@ -225,7 +235,10 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
             xb_prev_data=np.exp(xb_ewma),
             q_prev_data=np.exp(q_prev_tr),
             v_hat_data=v_hat_tr,
-            device=DEVICE, verbose=False)
+            device=DEVICE, verbose=False,
+            tag=f"nds-hab-cf-habadv-s{seed}",
+            cache_dir=CACHE_DIR,
+            force_retrain=FORCE_RETRAIN)
     except Exception as exc:
         if verbose:
             print(f"    [ND+Habit-CF fit failed: {exc}]")
@@ -704,7 +717,7 @@ def run(cfg: dict) -> tuple:
 
     all_results = []
     for ri in range(N_RUNS):
-        seed = 200 + ri * 17
+        seed = 42 + ri * 15
         t0   = time.time()
         print(f"  Run {ri+1}/{N_RUNS}  seed={seed}")
         r = run_one_seed(seed, cfg, verbose=(ri == N_RUNS - 1))

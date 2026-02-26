@@ -1,17 +1,33 @@
 DGP,rho,Model,RMSE,MAE,RMSE_se,MAE_se
-CES,0.0,Neural Demand (static),0.002464,0.002016,9e-05,8.2e-05
-CES,0.0,Neural Demand (CF),0.003171,0.002509,0.000595,0.000367
+CES,0.0,Neural Demand (static),0.000527,0.000428,2.3e-05,1.8e-05
+CES,0.0,Neural Demand (CF),0.000697,0.000552,4.9e-05,3.8e-05
 CES,0.0,Neural Demand (habit),,,,
-CES,0.0,"Neural Demand (habit, CF)",0.006471,0.005042,0.000626,0.00065
-CES,0.6,Neural Demand (static),0.002402,0.001941,9.5e-05,0.000131
-CES,0.6,Neural Demand (CF),0.003218,0.002423,0.000534,0.000268
+CES,0.0,"Neural Demand (habit, CF)",0.000817,0.000636,8e-05,5.4e-05
+CES,0.3,Neural Demand (static),0.000501,0.000402,2.5e-05,2.3e-05
+CES,0.3,Neural Demand (CF),0.000631,0.000499,9.4e-05,7e-05
+CES,0.3,Neural Demand (habit),,,,
+CES,0.3,"Neural Demand (habit, CF)",0.000811,0.000616,9.6e-05,6.4e-05
+CES,0.6,Neural Demand (static),0.000517,0.000415,3e-05,2.5e-05
+CES,0.6,Neural Demand (CF),0.000522,0.000408,4.5e-05,3.6e-05
 CES,0.6,Neural Demand (habit),,,,
-CES,0.6,"Neural Demand (habit, CF)",0.004252,0.003386,0.000123,0.000182
-Habit,0.0,Neural Demand (static),0.026488,0.020016,8.8e-05,0.000244
-Habit,0.0,Neural Demand (CF),0.026509,0.02039,0.000868,0.00103
+CES,0.6,"Neural Demand (habit, CF)",0.000874,0.000659,4.3e-05,2.7e-05
+CES,0.9,Neural Demand (static),0.000699,0.000563,6.5e-05,5.1e-05
+CES,0.9,Neural Demand (CF),0.000546,0.000437,5.2e-05,4.3e-05
+CES,0.9,Neural Demand (habit),,,,
+CES,0.9,"Neural Demand (habit, CF)",0.000789,0.000625,3.9e-05,2.7e-05
+Habit,0.0,Neural Demand (static),0.022907,0.01679,0.000539,0.000254
+Habit,0.0,Neural Demand (CF),0.023127,0.016846,0.000504,0.000291
 Habit,0.0,Neural Demand (habit),,,,
-Habit,0.0,"Neural Demand (habit, CF)",0.021337,0.016196,0.000386,6.2e-05
-Habit,0.6,Neural Demand (static),0.026617,0.020467,0.000182,0.000671
-Habit,0.6,Neural Demand (CF),0.027518,0.021075,0.000178,0.000477
+Habit,0.0,"Neural Demand (habit, CF)",0.020257,0.014427,0.000719,0.000501
+Habit,0.3,Neural Demand (static),0.022173,0.016577,0.000572,0.000426
+Habit,0.3,Neural Demand (CF),0.021799,0.016219,0.000365,0.000349
+Habit,0.3,Neural Demand (habit),,,,
+Habit,0.3,"Neural Demand (habit, CF)",0.015259,0.011155,0.00038,0.000208
+Habit,0.6,Neural Demand (static),0.023361,0.017393,0.000767,0.000594
+Habit,0.6,Neural Demand (CF),0.023453,0.017485,0.000762,0.000593
 Habit,0.6,Neural Demand (habit),,,,
-Habit,0.6,"Neural Demand (habit, CF)",0.02337,0.018223,0.001299,0.000856
+Habit,0.6,"Neural Demand (habit, CF)",0.017245,0.012266,0.000517,0.000429
+Habit,0.9,Neural Demand (static),0.022753,0.016876,0.000867,0.000593
+Habit,0.9,Neural Demand (CF),0.022938,0.016984,0.000961,0.000674
+Habit,0.9,Neural Demand (habit),,,,
+Habit,0.9,"Neural Demand (habit, CF)",0.019829,0.014117,0.001212,0.000621

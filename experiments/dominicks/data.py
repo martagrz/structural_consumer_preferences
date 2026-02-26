@@ -244,7 +244,9 @@ def build_arrays(panel: pd.DataFrame, cfg: dict) -> dict:
     tot = rev.sum(1, keepdims=True)
 
     # 2a. Conditional shares (sum to 1 over inside goods) — used by all models.
-    shares = np.where(tot > 0, rev / tot, 1.0 / G)
+    #     Use safe division to avoid RuntimeWarning for zero-revenue weeks.
+    tot_safe = np.where(tot > 0, tot, 1.0)
+    shares = np.where(tot > 0, rev / tot_safe, 1.0 / G)
     shares = np.clip(shares, 1e-6, 1.0)
     shares /= shares.sum(1, keepdims=True)
 
@@ -252,9 +254,11 @@ def build_arrays(panel: pd.DataFrame, cfg: dict) -> dict:
     #     Outside option = OTHER analgesics not classified as ASP/ACET/IBU.
     tot_mkt = rev.sum(1) + r_other                                  # (N,)
     mkt_rev = np.column_stack([rev, r_other])                       # (N, G+1)
+    
+    tot_mkt_safe = np.where(tot_mkt[:, None] > 0, tot_mkt[:, None], 1.0)
     mkt_shares = np.where(
         tot_mkt[:, None] > 0,
-        mkt_rev / tot_mkt[:, None],
+        mkt_rev / tot_mkt_safe,
         np.array([1.0/G]*G + [0.0]))                                # (N, G+1)
     mkt_shares = np.clip(mkt_shares, 1e-8, 1.0)
     mkt_shares /= mkt_shares.sum(1, keepdims=True)                  # renormalise

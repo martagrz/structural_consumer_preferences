@@ -328,6 +328,7 @@ def fit_mdp_delta_grid_dom(
             slut_start_frac=cfg['mdp_e2e_slut_start'],
             xbar_recompute_every=10,
             device=dev, tag=f"{tag}-d{d:.2f}",
+            cache_dir=cfg.get("model_cache_dir"),
         )
 
         d_t = torch.tensor(float(d), dtype=torch.float32, device=dev)

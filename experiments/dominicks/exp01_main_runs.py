@@ -155,7 +155,8 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
         batch_size=cfg['nirl_batch'],
         lam_mono=cfg['nirl_lam_mono'], lam_slut=cfg['nirl_lam_slut'],
         slut_start_frac=cfg['nirl_slut_start'],
-        device=dev, verbose=True, tag=f'Window-IRL s={seed}')
+        device=dev, verbose=True, tag=f'Window-IRL s={seed}',
+        cache_dir=cfg.get('model_cache_dir'))
     _wirl_lp_mean = _lp_tr.mean(0)
     _wirl_lq_mean = _lq_tr.mean(0)
 
@@ -343,6 +344,18 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
                 s_te_mode_idx=s_te_mode_idx)
         except Exception:
             cross_elast[_fe_nm] = np.full((G, G), np.nan)
+
+    for _cf_nm, _cf_sp, _cf_xkw in [
+        ('Neural Demand (CF)',            'nirl-cf',   {}),
+        ('Neural Demand (habit, CF)',     'mdp-cf',    {'xb_prev0': xb_mn, 'q_prev0': qp_mn}),
+        ('Neural Demand (habit, FE, CF)', 'mdp-fe-cf', {'xb_prev0': xb_mn, 'q_prev0': qp_mn}),
+    ]:
+        try:
+            cross_elast[_cf_nm] = full_elasticity_matrix(
+                _cf_sp, p_mn, y_mn, cfg, **{**KW, **_cf_xkw},
+                s_te_mode_idx=s_te_mode_idx)
+        except Exception:
+            cross_elast[_cf_nm] = np.full((G, G), np.nan)
 
     # ── MDP structural demand curve (fixed mean xbar) ─────────────────────
     _xb_fixed = np.tile(xb_mn, (N_GR, 1))
@@ -690,7 +703,8 @@ def aggregate(all_runs: list) -> dict:
     # Cross-price elasticity
     _cp_names = ['LA-AIDS', 'BLP (IV)', 'QUAIDS',
                  'Neural Demand (static)', 'Neural Demand (habit)',
-                 'Neural Demand (FE)', 'Neural Demand (habit, FE)']
+                 'Neural Demand (FE)', 'Neural Demand (habit, FE)',
+                 'Neural Demand (CF)', 'Neural Demand (habit, CF)']
     cross_elast_mean = {
         nm: np.nanmean(np.stack([r['cross_elast'][nm] for r in all_runs], 0), 0)
         for nm in _cp_names if nm in all_runs[0]['cross_elast']
@@ -978,14 +992,18 @@ def _make_figures(agg: dict, splits: dict, cfg: dict) -> None:
         ]
         n_scat = len(scat_defs)
         y_te   = splits["y_te"]
-        fig4, axes4 = plt.subplots(n_scat, G, figsize=(14, 4.0 * n_scat))
-        for row, (mn, sp, ek, pred_kw, col) in enumerate(scat_defs):
+        
+        for mn, sp, ek, pred_kw, col in scat_defs:
+            # Create a 1x3 figure for this model
+            fig_m, axes_m = plt.subplots(1, G, figsize=(15, 5))
+            
             try:
                 wp = pred(sp, p_te, y_te, cfg, **pred_kw, **{**KW_last, **ek})
             except Exception:
                 wp = np.full((len(p_te), G), np.nan)
+                
             for gi, gn in enumerate(GOODS):
-                ax = axes4[row, gi]
+                ax = axes_m[gi]
                 valid = ~np.isnan(wp[:, gi])
                 if valid.any():
                     ax.scatter(w_te[valid, gi], wp[valid, gi],
@@ -997,21 +1015,26 @@ def _make_figures(agg: dict, splits: dict, cfg: dict) -> None:
                 ax.set_xlim(lo, hi); ax.set_ylim(lo, hi)
                 ri = (float(np.sqrt(_mse_fn(w_te[valid, gi], wp[valid, gi])))
                       if valid.any() else float("nan"))
-                ax.set_title(f"{mn} — {gn}\nRMSE={ri:.4f}", fontsize=8, fontweight="bold")
-                ax.set_xlabel("Observed", fontsize=7)
-                ax.set_ylabel("Predicted", fontsize=7)
-                ax.tick_params(labelsize=7)
+                ax.set_title(f"{gn}\nRMSE={ri:.4f}", fontsize=10, fontweight="bold")
+                ax.set_xlabel("Observed", fontsize=9)
+                ax.set_ylabel("Predicted", fontsize=9)
                 ax.grid(True, alpha=0.3)
-        fig4.suptitle(
-            "Observed vs Predicted Budget Shares — All Models, Dominick's Analgesics  (last run)",
-            fontsize=12, fontweight="bold")
-        fig4.tight_layout()
-        for ext in ("pdf", "png"):
-            fig4.savefig(f"{fig_dir}/fig_scatter.{ext}", dpi=150, bbox_inches="tight")
-        plt.close(fig4)
-        print("  Saved: fig_scatter")
+            
+            clean_name = mn.replace("\n", " ").replace("(", "").replace(")", "").replace(" ", "_").replace(".", "").lower()
+            # Handle "N. Demand" -> "n_demand" or similar
+            # "N. Demand\n(habit)" -> "n_demand_habit"
+            
+            fig_m.suptitle(f"{mn.replace(chr(10), ' ')} — Observed vs Predicted", fontsize=12, fontweight="bold")
+            fig_m.tight_layout()
+            
+            fname = f"fig_scatter_{clean_name}"
+            for ext in ("pdf", "png"):
+                fig_m.savefig(f"{fig_dir}/{fname}.{ext}", dpi=150, bbox_inches="tight")
+            plt.close(fig_m)
+            print(f"  Saved: {fname}")
+
     except Exception as _e4:
-        print(f"  [fig4 skipped: {_e4}]")
+        print(f"  [fig_scatter split skipped: {_e4}]")
 
     # ── Fig 6: RMSE bar chart with error bars ─────────────────────────────────
     if N_RUNS > 1:
@@ -1036,30 +1059,39 @@ def _make_figures(agg: dict, splits: dict, cfg: dict) -> None:
 
     # ── Fig 7: Cross-price elasticity heatmaps ────────────────────────────────
     _hm_models = ["LA-AIDS", "BLP (IV)", "QUAIDS", "Neural Demand (static)", "Neural Demand (habit)",
-                  "Neural Demand (FE)", "Neural Demand (habit, FE)"]
+                  "Neural Demand (FE)", "Neural Demand (habit, FE)",
+                  "Neural Demand (CF)", "Neural Demand (habit, CF)"]
     _hm_avail  = [nm for nm in _hm_models if nm in cross_elast_mean]
     if _hm_avail:
-        fig7, axes7 = plt.subplots(1, len(_hm_avail), figsize=(4.5 * len(_hm_avail), 4.5))
-        if len(_hm_avail) == 1:
-            axes7 = [axes7]
+        n_cols = 3
+        n_rows = (len(_hm_avail) + n_cols - 1) // n_cols
+        fig7, axes7 = plt.subplots(n_rows, n_cols, figsize=(4.5 * n_cols, 4.5 * n_rows))
+        axes7_flat = axes7.flatten()
+        
         _vabs = max(max(np.nanmax(np.abs(cross_elast_mean[nm])) for nm in _hm_avail), 0.1)
-        for ax7, nm in zip(axes7, _hm_avail):
-            mat = cross_elast_mean[nm]
-            im  = ax7.imshow(mat, cmap="RdBu_r", vmin=-_vabs, vmax=_vabs, aspect="auto")
-            for i in range(G):
-                for j in range(G):
-                    v = mat[i, j]
-                    ax7.text(j, i, f"{v:.2f}", ha="center", va="center", fontsize=11,
-                             color="white" if abs(v) > 0.4 * _vabs else "black",
-                             fontweight="bold")
-            ax7.set_xticks(range(G)); ax7.set_yticks(range(G))
-            ax7.set_xticklabels([f"$w_{{{g}}}$\n({GOODS[g][:4]}.)" for g in range(G)], fontsize=9)
-            ax7.set_yticklabels([f"$p_{{{g}}}$\n({GOODS[g][:4]}.)" for g in range(G)], fontsize=9)
-            ax7.set_xlabel("Response share  $w_j$", fontsize=9)
-            ax7.set_ylabel("Shock price  $p_i$", fontsize=9)
-            ax7.set_title(nm, fontsize=11, fontweight="bold")
-            plt.colorbar(im, ax=ax7, fraction=0.046, pad=0.04,
-                         label=r"$\varepsilon_{ij}$ = $\partial\log w_j/\partial\log p_i$")
+        
+        for idx, ax7 in enumerate(axes7_flat):
+            if idx < len(_hm_avail):
+                nm = _hm_avail[idx]
+                mat = cross_elast_mean[nm]
+                im  = ax7.imshow(mat, cmap="RdBu_r", vmin=-_vabs, vmax=_vabs, aspect="auto")
+                for i in range(G):
+                    for j in range(G):
+                        v = mat[i, j]
+                        ax7.text(j, i, f"{v:.2f}", ha="center", va="center", fontsize=11,
+                                 color="white" if abs(v) > 0.4 * _vabs else "black",
+                                 fontweight="bold")
+                ax7.set_xticks(range(G)); ax7.set_yticks(range(G))
+                ax7.set_xticklabels([f"$w_{{{g}}}$\n({GOODS[g][:4]}.)" for g in range(G)], fontsize=9)
+                ax7.set_yticklabels([f"$p_{{{g}}}$\n({GOODS[g][:4]}.)" for g in range(G)], fontsize=9)
+                ax7.set_xlabel("Response share  $w_j$", fontsize=9)
+                ax7.set_ylabel("Shock price  $p_i$", fontsize=9)
+                ax7.set_title(nm, fontsize=11, fontweight="bold")
+                plt.colorbar(im, ax=ax7, fraction=0.046, pad=0.04,
+                             label=r"$\varepsilon_{ij}$ = $\partial\log w_j/\partial\log p_i$")
+            else:
+                ax7.axis('off')
+        
         fig7.suptitle(
             "Cross-Price Elasticity Heatmaps — Dominick's Analgesics\n"
             r"Evaluated at mean test prices  ·  MDP: fixed mean $\bar{x}$ (sorting removed)"
@@ -1587,9 +1619,6 @@ def _make_tables(agg: dict, splits: dict, cfg: dict) -> None:
          f"Cross-Price Demand Matrix — Dominick's Analgesics.{_se_band_note}", "fig:dom_mdp"),
         ("fig_convergence",
          f"Training Convergence — Dominick's Analgesics (last run).", "fig:dom_conv"),
-        ("fig_scatter",
-         f"Observed vs. Predicted Budget Shares — Dominick's Analgesics (last run).",
-         "fig:dom_scatter"),
     ]
     if N_RUNS > 1:
         FDEFS += [

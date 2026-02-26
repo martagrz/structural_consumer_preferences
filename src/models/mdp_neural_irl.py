@@ -103,12 +103,15 @@ class MDPNeuralIRL(nn.Module):
                                    v_hat=None):
         lp_d = log_p.detach().requires_grad_(True)
         w = self.forward(lp_d, log_y, log_xb_prev, log_q_prev, v_hat)
-        rows = [
-            torch.autograd.grad(
+        rows = []
+        for i in range(self.n_goods):
+            grad = torch.autograd.grad(
                 w[:, i].sum(), lp_d, create_graph=True, retain_graph=True
-            )[0].unsqueeze(2)
-            for i in range(self.n_goods)
-        ]
+            )[0]
+            if grad is None:
+                 grad = torch.zeros_like(lp_d)
+            rows.append(grad.unsqueeze(2))
+        
         J = torch.cat(rows, dim=2)
         return ((J - J.transpose(1, 2)) ** 2).mean()
 

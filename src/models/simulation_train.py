@@ -3,6 +3,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import os
 
 
 def train_neural_irl(
@@ -11,7 +12,7 @@ def train_neural_irl(
     income,
     w_expert,
     epochs=4000,
-    lr=5e-4,
+    lr=5e-3,
     batch_size=256,
     lam_mono=0.3,
     lam_slut=0.1,
@@ -24,26 +25,34 @@ def train_neural_irl(
     v_hat_data=None,
     device="cpu",
     verbose=False,
+    tag="",
+    cache_dir=None,
+    force_retrain=False,
 ):
     """Train a NeuralIRL or MDPNeuralIRL model.
 
-    For MDPNeuralIRL pass *both* xb_prev_data and q_prev_data (raw
-    quantities in physical units).  The loop converts them to log-space
-    before handing them to the model, matching the model's expected input
-    convention.
-
-    Legacy callers that still pass ``xbar_data`` (single array) are
-    redirected: xb_prev_data=xbar_data, q_prev_data derived from shares.
-    That path is deprecated; prefer the two-array interface.
-
-    Control-function correction
-    ---------------------------
-    Pass ``v_hat_data`` (N, G) with first-stage OLS residuals to enable
-    the CF endogeneity correction.  The model must be constructed with
-    ``n_cf = G`` (or equal to the number of columns in v_hat_data).
-    At evaluation / welfare time set v_hat = zeros to recover the
-    structural demand without the endogenous component.
+    Includes caching: if a model with the same 'tag' exists in
+    cache_dir, it is loaded instead of retrained.
     """
+    model = model.to(device)
+
+    # ── Cache Check ──────────────────────────────────────────────────────────
+    if cache_dir is not None:
+        os.makedirs(cache_dir, exist_ok=True)
+        safe_tag = tag.replace(" ", "_").replace("=", "").replace("-", "_")
+        cache_path = os.path.join(cache_dir, f"{safe_tag}.pt")
+
+        if os.path.exists(cache_path) and not force_retrain:
+            if verbose:
+                print(f"    [Cache] Loading {tag} from {cache_path}")
+            try:
+                checkpoint = torch.load(cache_path, map_location=device, weights_only=False)
+                model.load_state_dict(checkpoint["model_state_dict"])
+                model.eval()
+                return model, checkpoint.get("history", [])
+            except Exception as e:
+                print(f"    [Cache] Failed to load {cache_path}: {e}. Retraining.")
+
     # ── Backward-compat shim ──────────────────────────────────────────────
     if xbar_data is not None and xb_prev_data is None:
         # Old single-array interface: treat xbar_data as xb_prev, derive
@@ -153,5 +162,16 @@ def train_neural_irl(
 
     if best_state:
         model.load_state_dict(best_state)
+
+    # ── Save to Cache ────────────────────────────────────────────────────────
+    if cache_dir is not None:
+        try:
+            torch.save({
+                "model_state_dict": model.state_dict(),
+                "history": history,
+            }, cache_path)
+        except Exception as e:
+            print(f"    [Cache] Failed to save {cache_path}: {e}")
+
     model.eval()
     return model, history
