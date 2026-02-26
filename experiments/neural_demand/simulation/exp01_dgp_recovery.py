@@ -127,6 +127,7 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
         "Leontief":    LeontiefConsumer(),
         "Stone–Geary": StoneGearyConsumer(),
         "Habit":       HabitFormationConsumer(),
+        "Endogenous CES": CESConsumer(),  # Placeholder, handled specially in loop
     }
 
     acc_rows   = []
@@ -142,11 +143,65 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
     for dgp_name, consumer in DGPs.items():
         if verbose:
             print(f"  DGP: {dgp_name}")
-        try:
-            w_train = consumer.solve_demand(p_pre, income)
-            w_post  = consumer.solve_demand(p_post, income)
-        except Exception as e:
-            print(f"    [skip DGP={dgp_name}: {e}]"); continue
+
+        # ── Data Generation ──────────────────────────────────────────────────
+        if dgp_name == "Endogenous CES":
+            # Special handling for Endogenous CES DGP
+            # p = Z + nu + xi, with xi correlated with utility shock
+            # We generate new data specifically for this DGP
+            
+            # 1. Generate shocks
+            # xi: endogenous shock (common to price and utility)
+            # nu: idiosyncratic supply shock
+            xi = np.random.normal(0, 0.5, (N, 3))
+            nu = np.random.normal(0, 0.1, (N, 3))
+            
+            # 2. Generate Prices: p = Z + nu + xi
+            # reusing the Z from shared draws to keep instrument valid
+            p_endo = np.clip(Z + nu + xi, 0.1, None)
+            
+            # 3. Generate Demand with correlated utility shocks
+            # CES alpha = base_alpha * exp(xi)
+            # We use the base CESConsumer but modify alpha per observation
+            # CESConsumer.solve_demand doesn't support per-obs alpha easily without modification
+            # So we implement the demand function locally here
+            
+            base_alpha = np.array([0.4, 0.4, 0.2])
+            rho_ces = 0.45
+            sigma = 1.0 / (1.0 - rho_ces)
+            
+            # alpha_obs: (N, 3)
+            # We add xi to log-alpha. 
+            # Note: xi is correlated with price (positive correlation -> simultaneity)
+            alpha_obs = base_alpha[None, :] * np.exp(xi)
+            
+            # Calculate shares
+            # w_j = (alpha_j^sigma * p_j^(1-sigma)) / sum(...)
+            num = alpha_obs ** sigma * p_endo ** (1.0 - sigma)
+            w_endo = num / num.sum(axis=1, keepdims=True)
+            
+            # Set training data
+            curr_p_pre  = p_endo
+            curr_w_train = w_endo
+            curr_Z      = Z  # Instrument is Z
+            
+            # For post-shock (welfare/elasticity), we need structural demand (xi=0)
+            # or we keep xi fixed? 
+            # Usually we evaluate at mean prices and mean shocks (xi=0).
+            # Let's use the standard p_post (from shared) for evaluation consistency,
+            # but we need to know the "true" demand at p_post.
+            # True structural demand at p_post (with xi=0)
+            curr_w_post = consumer.solve_demand(p_post, income)
+            
+        else:
+            # Standard DGPs use shared exogenous prices
+            try:
+                curr_p_pre   = p_pre
+                curr_w_train = consumer.solve_demand(p_pre, income)
+                curr_w_post  = consumer.solve_demand(p_post, income)
+                curr_Z       = Z
+            except Exception as e:
+                print(f"    [skip DGP={dgp_name}: {e}]"); continue
 
         val_consumer = type(consumer)()
         try:
@@ -155,28 +210,28 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
             w_val = np.full((N_val, 3), 1/3)
 
         # ── Static benchmarks ─────────────────────────────────────────────────
-        aids_m   = AIDSBench(); aids_m.fit(p_pre, w_train, income)
+        aids_m   = AIDSBench(); aids_m.fit(curr_p_pre, curr_w_train, income)
         # BLP: all 3 goods are inside goods; add a fixed 1% outside option
         # (no genuine outside good in simulation — mirrors main_multiple_runs.py).
         _blp_out = 0.01
-        mw_train = np.column_stack([w_train * (1 - _blp_out),
+        mw_train = np.column_stack([curr_w_train * (1 - _blp_out),
                                     np.full(N, _blp_out)])
-        blp_m    = BLPBench().fit(p_pre, mw_train, Z)
-        quaids_m = QUAIDS();    quaids_m.fit(p_pre, w_train, income)
-        series_m = SeriesDemand(); series_m.fit(p_pre, w_train, income)
+        blp_m    = BLPBench().fit(curr_p_pre, mw_train, curr_Z)
+        quaids_m = QUAIDS();    quaids_m.fit(curr_p_pre, curr_w_train, income)
+        series_m = SeriesDemand(); series_m.fit(curr_p_pre, curr_w_train, income)
 
         # ── Linear IRL (3 feature variants) ──────────────────────────────────
-        F_sh = features_shared(p_pre, income)
-        F_gs = features_good_specific(p_pre, income)
-        F_or = features_orthogonalised(p_pre, income)
-        theta_sh = run_linear_irl(F_sh, w_train, lr=0.05, epochs=3000, l2=1e-4)
-        theta_gs = run_linear_irl(F_gs, w_train, lr=0.05, epochs=3000, l2=1e-4)
-        theta_or = run_linear_irl(F_or, w_train, lr=0.05, epochs=3000, l2=1e-4)
+        F_sh = features_shared(curr_p_pre, income)
+        F_gs = features_good_specific(curr_p_pre, income)
+        F_or = features_orthogonalised(curr_p_pre, income)
+        theta_sh = run_linear_irl(F_sh, curr_w_train, lr=0.05, epochs=3000, l2=1e-4)
+        theta_gs = run_linear_irl(F_gs, curr_w_train, lr=0.05, epochs=3000, l2=1e-4)
+        theta_or = run_linear_irl(F_or, curr_w_train, lr=0.05, epochs=3000, l2=1e-4)
 
         # ── Variational Mixture ───────────────────────────────────────────────
         mix_m = ContinuousVariationalMixture(K=4, n_goods=3)
         try:
-            mix_m.fit(p_pre, income, w_train, n_iter=40)
+            mix_m.fit(curr_p_pre, income, curr_w_train, n_iter=40)
         except Exception as exc:
             if verbose: print(f"    [VarMixture fit failed: {exc}]")
 
@@ -190,23 +245,23 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
         # ── Neural Demand (static) ────────────────────────────────────────────
         nds_m = NeuralIRL(n_goods=3, hidden_dim=HIDDEN)
         nds_m, hist_nds_static = train_neural_irl(
-            nds_m, p_pre, income, w_train,
+            nds_m, curr_p_pre, income, curr_w_train,
             epochs=EPOCHS, lr=5e-4, batch_size=256,
             lam_mono=0.3, lam_slut=0.1, slut_start_frac=0.25,
             device=DEVICE, verbose=verbose)
 
         # ── Neural Demand (CF) ────────────────────────────────────────────────
-        v_hat_tr, _ = cf_first_stage(np.log(np.maximum(p_pre, 1e-8)), Z)
+        v_hat_tr, _ = cf_first_stage(np.log(np.maximum(curr_p_pre, 1e-8)), curr_Z)
         nds_cf_m = NeuralIRL(n_goods=3, hidden_dim=HIDDEN, n_cf=3)
         nds_cf_m, hist_nds_cf = train_neural_irl(
-            nds_cf_m, p_pre, income, w_train,
+            nds_cf_m, curr_p_pre, income, curr_w_train,
             epochs=EPOCHS, lr=5e-4, batch_size=256,
             lam_mono=0.3, lam_slut=0.1, slut_start_frac=0.25,
             v_hat_data=v_hat_tr,
             device=DEVICE, verbose=False)
 
         # ── Neural Demand (habit) — δ sweep ──────────────────────────────────
-        q_tr  = w_train * income[:, None] / np.maximum(p_pre, 1e-8)
+        q_tr  = curr_w_train * income[:, None] / np.maximum(curr_p_pre, 1e-8)
         lq_tr = np.log(np.maximum(q_tr, 1e-6))
         q_v   = w_val * y_val[:, None] / np.maximum(p_val, 1e-8)
         lq_v  = np.log(np.maximum(q_v, 1e-6))
@@ -214,7 +269,7 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
         sweep = None
         try:
             sweep = fit_neural_demand_delta_grid(
-                p_pre, income, w_train, lq_tr,
+                curr_p_pre, income, curr_w_train, lq_tr,
                 p_val, y_val, w_val, lq_v,
                 delta_grid=DELTA_GRID,
                 epochs=EPOCHS, lr=5e-4, batch_size=256,
@@ -231,7 +286,7 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
         # Compute xbar for test (post-shock) set AND mean training xbar for
         # demand-curve evaluation (habit model should be evaluated at a
         # representative in-distribution habit stock, not at zeros).
-        q_post = w_post * income[:, None] / np.maximum(p_post, 1e-8)
+        q_post = curr_w_post * income[:, None] / np.maximum(p_post, 1e-8)
         lq_post = np.log(np.maximum(q_post, 1e-6))
         if nds_hab_m is not None:
             with torch.no_grad():
@@ -243,17 +298,17 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
                 xb_tr_arr = compute_xbar_e2e(d_t, lq_t_tr, store_ids=None).cpu().numpy()
             xb_tr_mean = xb_tr_arr.mean(0)   # (G,) — representative training-time log_xbar
         else:
-            xb_post    = np.zeros_like(w_post)
-            xb_tr_mean = np.zeros(w_train.shape[1])
+            xb_post    = np.zeros_like(curr_w_post)
+            xb_tr_mean = np.zeros(curr_w_train.shape[1])
 
         # ── Neural Demand (habit, CF) ─────────────────────────────────────────
         # Use fixed delta (midpoint of grid) for the CF habit model
         DELTA_HAB = cfg.get("DELTA_HAB", float(DELTA_GRID[len(DELTA_GRID)//2]))
-        xb_ewma = np.zeros_like(w_train)
-        xb_ewma[0] = np.log(np.maximum(w_train[0], 1e-8))
+        xb_ewma = np.zeros_like(curr_w_train)
+        xb_ewma[0] = np.log(np.maximum(curr_w_train[0], 1e-8))
         for t in range(1, N):
             xb_ewma[t] = (DELTA_HAB * xb_ewma[t-1]
-                          + (1.0 - DELTA_HAB) * np.log(np.maximum(w_train[t-1], 1e-8)))
+                          + (1.0 - DELTA_HAB) * np.log(np.maximum(curr_w_train[t-1], 1e-8)))
         q_prev_tr = np.roll(lq_tr, 1, axis=0); q_prev_tr[0] = lq_tr[0]
 
         nds_hab_cf_m = MDPNeuralIRL(n_goods=3, hidden_dim=HIDDEN,
@@ -261,7 +316,7 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
         hist_nds_hab_cf = []
         try:
             nds_hab_cf_m, hist_nds_hab_cf = train_neural_irl(
-                nds_hab_cf_m, p_pre, income, w_train,
+                nds_hab_cf_m, curr_p_pre, income, curr_w_train,
                 epochs=EPOCHS, lr=5e-4, batch_size=256,
                 lam_mono=0.3, lam_slut=0.1, slut_start_frac=0.25,
                 xb_prev_data=np.exp(xb_ewma),
@@ -273,12 +328,12 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
             nds_hab_cf_m = None
 
         # Post-shock EWMA for habit-CF evaluation (v_hat=0 → structural)
-        xb_post_ewma = np.zeros_like(w_post)
-        xb_post_ewma[0] = np.log(np.maximum(w_post[0], 1e-8))
-        for t in range(1, len(w_post)):
+        xb_post_ewma = np.zeros_like(curr_w_post)
+        xb_post_ewma[0] = np.log(np.maximum(curr_w_post[0], 1e-8))
+        for t in range(1, len(curr_w_post)):
             xb_post_ewma[t] = (DELTA_HAB * xb_post_ewma[t-1]
                                + (1.0 - DELTA_HAB)
-                               * np.log(np.maximum(w_post[t-1], 1e-8)))
+                               * np.log(np.maximum(curr_w_post[t-1], 1e-8)))
         q_prev_post = np.roll(lq_post, 1, axis=0); q_prev_post[0] = lq_post[0]
 
         # ── Shared KW bundle ─────────────────────────────────────────────────
@@ -303,7 +358,7 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
             elif sp == "nd-habit-cf":
                 xb_kw = _HAB_EWMA_KW
             try:
-                m = get_metrics(sp, p_post, income, w_post, **xb_kw, **KW)
+                m = get_metrics(sp, p_post, income, curr_w_post, **xb_kw, **KW)
                 acc_rows.append({"DGP": dgp_name, "Model": nm,
                                  "RMSE": m["RMSE"], "MAE": m["MAE"]})
             except Exception:

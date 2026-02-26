@@ -374,3 +374,51 @@ def fit_mdp_delta_grid_dom(
         'id_mask':    id_mask,
         'all_models': all_models,
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  STATISTICAL TESTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def dm_test_by_store(resid1, resid2, store_ids):
+    """Diebold-Mariano type test blocking by store.
+
+    1. Compute loss difference d_it = e1_it^2 - e2_it^2 for each observation.
+       (Sum of squared errors across goods if multivariate).
+    2. Compute mean difference d_i for each store i.
+    3. Perform paired t-test on d_i values (H0: mean difference is 0).
+
+    Returns
+    -------
+    t_stat : float
+    p_val  : float
+    mean_diff : float (positive means model 2 is better if d = e1^2 - e2^2)
+    """
+    if resid1.ndim > 1:
+        loss1 = (resid1**2).sum(axis=1)
+        loss2 = (resid2**2).sum(axis=1)
+    else:
+        loss1 = resid1**2
+        loss2 = resid2**2
+
+    diff = loss1 - loss2
+
+    # Aggregate by store
+    import pandas as pd
+    from scipy import stats
+
+    df = pd.DataFrame({'diff': diff, 'store': store_ids})
+    store_means = df.groupby('store')['diff'].mean()
+
+    n = len(store_means)
+    mean_diff = store_means.mean()
+    std_diff  = store_means.std(ddof=1)
+    se_diff   = std_diff / np.sqrt(n)
+
+    if se_diff < 1e-12:
+        return 0.0, 1.0, 0.0
+
+    t_stat = mean_diff / se_diff
+    p_val  = 2 * (1 - stats.t.cdf(abs(t_stat), df=n-1))
+
+    return t_stat, p_val, mean_diff

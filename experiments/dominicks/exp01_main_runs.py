@@ -43,6 +43,7 @@ from experiments.dominicks.utils import (
     kl_div,
     mdp_price_cond_habit,
     fit_mdp_delta_grid_dom,
+    dm_test_by_store,
 )
 
 
@@ -205,6 +206,16 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
         v_hat_tr=v_hat_tr,
         tag=f'MDP-IRL-FE-CF s={seed}')
 
+    # ── Placebo Habit ─────────────────────────────────────────────────────
+    perm_idx = np.random.permutation(len(xb_tr))
+    xb_placebo_tr = xb_tr[perm_idx]
+    qp_placebo_tr = qp_tr[perm_idx]
+    mdp_placebo_m, _ = _train(MDPNeuralIRL(cfg['mdp_hidden']),
+                              p_tr, y_tr, w_tr, 'mdp', cfg,
+                              xb_prev_tr=xb_placebo_tr,
+                              q_prev_tr=qp_placebo_tr,
+                              tag=f'MDP-Placebo s={seed}')
+
     _wirl_kw = dict(
         wirl=wirl_m,
         wirl_log_p_hist=_wirl_lp_mean,
@@ -213,7 +224,7 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
     )
     KW = dict(
         aids=aids_m, blp=blp_m, quaids=quaids_m, series=series_m,
-        nirl=nirl_m, mdp=mdp_m,
+        nirl=nirl_m, mdp=mdp_m, mdp_placebo=mdp_placebo_m,
         nirl_fe=nirl_fe_m, mdp_fe=mdp_fe_m,
         nirl_cf=nirl_cf_m, mdp_cf=mdp_cf_m, mdp_fe_cf=mdp_fe_cf_m,
         mix=vmix, ff=feat_shared, theta=th_sh,
@@ -221,6 +232,14 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
     )
 
     _mdp_te = (xb_te, qp_te)
+    # Placebo test set: shuffle test habit stock too?
+    # Or use the shuffled train habit stock if we want to test "random habit"?
+    # The hypothesis is that the *structure* of habit matters.
+    # If we feed random noise as habit, it shouldn't help.
+    # We can just permute xb_te.
+    perm_idx_te = np.random.permutation(len(xb_te))
+    _mdp_placebo_te = (xb_te[perm_idx_te], qp_te[perm_idx_te])
+
     SPECS = [
         ('LA-AIDS',          'aids',       {},                                            None),
         ('BLP (IV)',         'blp',        {},                                            None),
@@ -232,6 +251,7 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
         ('LDS (Orth)',             'lirl',       {'ff': feat_orth,          'theta': th_or},   None),
         ('Neural Demand (static)', 'nirl',       {},                                            None),
         ('Neural Demand (habit)',  'mdp',        {},                                            _mdp_te),
+        ('Neural Demand (placebo)', 'mdp',       {'mdp': mdp_placebo_m},                        _mdp_placebo_te),
         ('Var. Mixture',     'mix',        {},                                            None),
     ]
 
@@ -341,34 +361,39 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
         _mdp_structural = np.full((N_GR, G), np.nan)
 
     # ── Table 3: welfare ──────────────────────────────────────────────────
-    welf = {}
-    for nm, sp, ek, xbt in SPECS:
-        try:
-            mdp_kw = ({'xb_prev0': xb_mn, 'q_prev0': qp_mn}
-                      if xbt is not None else {})
-            welf[nm] = comp_var(sp, p0w, p1w, y_mn, cfg,
-                                **mdp_kw, **{**KW, **ek})
-        except Exception:
-            welf[nm] = np.nan
-    for _fe_nm, _fe_sp, _fe_xkw in [
-        ('Neural Demand (FE)',          'nirl-fe',    {}),
-        ('Neural Demand (habit, FE)',   'mdp-fe',     {'xb_prev0': xb_mn, 'q_prev0': qp_mn}),
-    ]:
-        try:
-            welf[_fe_nm] = comp_var(_fe_sp, p0w, p1w, y_mn, cfg,
-                                    **{**KW, **_fe_xkw})
-        except Exception:
-            welf[_fe_nm] = np.nan
-    for _cf_nm, _cf_sp, _cf_xkw in [
-        ('Neural Demand (CF)',            'nirl-cf',   {}),
-        ('Neural Demand (habit, CF)',     'mdp-cf',    {'xb_prev0': xb_mn, 'q_prev0': qp_mn}),
-        ('Neural Demand (habit, FE, CF)', 'mdp-fe-cf', {'xb_prev0': xb_mn, 'q_prev0': qp_mn}),
-    ]:
-        try:
-            welf[_cf_nm] = comp_var(_cf_sp, p0w, p1w, y_mn, cfg,
-                                    **{**KW, **_cf_xkw})
-        except Exception:
-            welf[_cf_nm] = np.nan
+    welf = {}     # Default (cfg shock_good)
+    welf_all = {} # All goods
+    
+    for g_idx in range(G):
+        p1w_g = p_mn.copy()
+        p1w_g[g_idx] *= 1 + ss
+        welf_all[g_idx] = {}
+        
+        # Helper to run welfare for a specific shock
+        def _run_w(nm, sp, kw_args):
+            try:
+                return comp_var(sp, p0w, p1w_g, y_mn, cfg, **kw_args)
+            except Exception:
+                return np.nan
+
+        for nm, sp, ek, xbt in SPECS:
+            mdp_kw = ({'xb_prev0': xb_mn, 'q_prev0': qp_mn} if xbt is not None else {})
+            welf_all[g_idx][nm] = _run_w(nm, sp, {**mdp_kw, **KW, **ek})
+            
+        for _fe_nm, _fe_sp, _fe_xkw in [
+            ('Neural Demand (FE)',          'nirl-fe',    {}),
+            ('Neural Demand (habit, FE)',   'mdp-fe',     {'xb_prev0': xb_mn, 'q_prev0': qp_mn}),
+        ]:
+            welf_all[g_idx][_fe_nm] = _run_w(_fe_nm, _fe_sp, {**KW, **_fe_xkw})
+            
+        for _cf_nm, _cf_sp, _cf_xkw in [
+            ('Neural Demand (CF)',            'nirl-cf',   {}),
+            ('Neural Demand (habit, CF)',     'mdp-cf',    {'xb_prev0': xb_mn, 'q_prev0': qp_mn}),
+            ('Neural Demand (habit, FE, CF)', 'mdp-fe-cf', {'xb_prev0': xb_mn, 'q_prev0': qp_mn}),
+        ]:
+            welf_all[g_idx][_cf_nm] = _run_w(_cf_nm, _cf_sp, {**KW, **_cf_xkw})
+
+    welf = welf_all[sg] # Default for backward compatibility
 
     # ── Welfare across xbar percentiles ───────────────────────────────────
     _D_PCTS  = [10, 25, 50, 75, 90]
@@ -403,6 +428,17 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
     r_m    = perf['Neural Demand (habit)']['RMSE']
     r_nf   = perf['Neural Demand (FE)']['RMSE']
     r_mf   = perf['Neural Demand (habit, FE)']['RMSE']
+
+    # Diebold-Mariano Test (Static vs Habit)
+    # Re-predict to get residuals (perf only has RMSE)
+    try:
+        _wp_n = pred('nirl', p_te, y_te, cfg, **KW)
+        _wp_m = pred('mdp', p_te, y_te, cfg, xb_prev=xb_te, q_prev=qp_te, **KW)
+        _res_n = w_te - _wp_n
+        _res_m = w_te - _wp_m
+        dm_stat, dm_p, dm_diff = dm_test_by_store(_res_n, _res_m, s_te)
+    except Exception:
+        dm_stat, dm_p, dm_diff = np.nan, np.nan, np.nan
 
     kl_a    = kl_div('aids',       p_te, y_te, w_te, cfg, **KW)
     kl_blp  = kl_div('blp',        p_te, y_te, w_te, cfg, **KW)
@@ -524,7 +560,7 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
     dk = cdf.loc[cdf.pi.idxmax()]
 
     return dict(
-        perf=perf, elast=elast, welf=welf,
+        perf=perf, elast=elast, welf=welf, welf_all=welf_all,
         cross_elast=cross_elast,
         mdp_structural=_mdp_structural,
         welf_by_pct=welf_by_pct,
@@ -536,6 +572,7 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
         kl_n=kl_n, kl_m=kl_m,
         kl_ncf=kl_ncf, kl_mcf=kl_mcf,
         kl_nf=kl_nf, kl_mf=kl_mf,
+        dm_stat=dm_stat, dm_p=dm_p, dm_diff=dm_diff,
         curves=curves,
         curves_by_shock=curves_by_shock,
         delta_mdp=delta_mdp,
@@ -584,6 +621,20 @@ def aggregate(all_runs: list) -> dict:
             {nm: np.nanstd(v, ddof=ddof) for nm, v in raw.items()},
         )
 
+    def _agg_welf_all():
+        if 'welf_all' not in all_runs[0]: return {}, {}
+        G_loc = len(all_runs[0]['welf_all'])
+        means = {}
+        stds  = {}
+        for g in range(G_loc):
+            means[g] = {}
+            stds[g]  = {}
+            for nm in MODEL_NAMES:
+                vals = [r['welf_all'][g].get(nm, np.nan) for r in all_runs]
+                means[g][nm] = np.nanmean(vals)
+                stds[g][nm]  = np.nanstd(vals, ddof=ddof)
+        return means, stds
+
     def _agg_elast():
         raw = {nm: [r['elast'][nm] for r in all_runs] for nm in MODEL_NAMES}
         return (
@@ -618,6 +669,7 @@ def aggregate(all_runs: list) -> dict:
     mae_mean,  mae_std  = _agg_metric('MAE')
     elast_mean, elast_std = _agg_elast()
     welf_mean, welf_std   = _agg_welf()
+    welf_all_mean, welf_all_std = _agg_welf_all()
     curve_mean, curve_std = _agg_curves()
     cbs_mean,   cbs_std   = _agg_curves_by_shock()
 
@@ -645,6 +697,10 @@ def aggregate(all_runs: list) -> dict:
         nm: np.nanmean(np.stack([r['cross_elast'][nm] for r in all_runs], 0), 0)
         for nm in _cp_names if nm in all_runs[0]['cross_elast']
     }
+    cross_elast_std = {
+        nm: np.nanstd(np.stack([r['cross_elast'][nm] for r in all_runs], 0), 0, ddof=ddof)
+        for nm in _cp_names if nm in all_runs[0]['cross_elast']
+    }
 
     mdp_structural_mean = np.nanmean(
         np.stack([r['mdp_structural'] for r in all_runs], 0), 0)
@@ -657,10 +713,16 @@ def aggregate(all_runs: list) -> dict:
         mae_mean=mae_mean,    mae_std=mae_std,
         elast_mean=elast_mean, elast_std=elast_std,
         welf_mean=welf_mean,  welf_std=welf_std,
+        welf_all_mean=welf_all_mean, welf_all_std=welf_all_std,
         curve_mean=curve_mean, curve_std=curve_std,
         cbs_mean=cbs_mean,    cbs_std=cbs_std,
         cross_elast_mean=cross_elast_mean,
+        cross_elast_std=cross_elast_std,
         mdp_structural_mean=mdp_structural_mean,
+        # ── DM Test ─────────────────────────────────────────────────────
+        dm_stat_mu=_arr('dm_stat').mean(), dm_stat_se=_arr('dm_stat').std(ddof=ddof),
+        dm_p_mu=_arr('dm_p').mean(),       dm_p_se=_arr('dm_p').std(ddof=ddof),
+        dm_diff_mu=_arr('dm_diff').mean(), dm_diff_se=_arr('dm_diff').std(ddof=ddof),
         # ── welfare by pct ───────────────────────────────────────────────
         welf_pct_mean=welf_pct_mean,
         welf_pct_std=welf_pct_std,
@@ -1240,6 +1302,10 @@ def _make_tables(agg: dict, splits: dict, cfg: dict) -> None:
     print(f"  Saved: {out_dir}/table2_elasticities.csv")
 
     # ── Table 3: Welfare ──────────────────────────────────────────────────────
+    welf_all_mean = agg.get("welf_all_mean", {})
+    welf_all_std  = agg.get("welf_all_std", {})
+    
+    # Default (shock_good)
     t3 = pd.DataFrame({
         "Model":        MODEL_NAMES,
         "CV_Loss_mean": [welf_mean.get(nm, float("nan")) * 100.0 for nm in MODEL_NAMES],
@@ -1248,6 +1314,17 @@ def _make_tables(agg: dict, splits: dict, cfg: dict) -> None:
     }).round(6)
     t3.to_csv(f"{out_dir}/table3_welfare.csv", index=False)
     print(f"  Saved: {out_dir}/table3_welfare.csv")
+
+    for g_idx in welf_all_mean:
+        t3g = pd.DataFrame({
+            "Model":        MODEL_NAMES,
+            "CV_Loss_mean": [welf_all_mean[g_idx].get(nm, float("nan")) * 100.0 for nm in MODEL_NAMES],
+            "CV_Loss_std":  [welf_all_std[g_idx].get(nm,  float("nan")) * 100.0 for nm in MODEL_NAMES],
+            "n_runs":       N_RUNS,
+        }).round(6)
+        gn = GOODS[g_idx]
+        t3g.to_csv(f"{out_dir}/table3_welfare_{gn}.csv", index=False)
+        print(f"  Saved: {out_dir}/table3_welfare_{gn}.csv")
 
     # ── Table 4: Neural Demand habit advantage ────────────────────────────────
     def _pct(base, v): return f"{100*(base-v)/base:.1f}%" if not np.isnan(v) else "n/a"
@@ -1265,6 +1342,33 @@ def _make_tables(agg: dict, splits: dict, cfg: dict) -> None:
     ]).round(6)
     t4.to_csv(f"{out_dir}/table4_mdp.csv", index=False)
     print(f"  Saved: {out_dir}/table4_mdp.csv")
+
+    # ── Table 8: Cross-Price Elasticities ─────────────────────────────────────
+    # We report the full matrix for Neural Demand (habit) and maybe others
+    # User requested SEs.
+    cross_elast_mean = agg["cross_elast_mean"]
+    cross_elast_std  = agg["cross_elast_std"]
+    
+    # We'll make a table for Neural Demand (habit) specifically, or comparison?
+    # "Add cross-price elasticity standard errors... The key structural claim is that the aspirin-ibuprofen cross-price effect is near zero"
+    # So we definitely need Neural Demand (habit).
+    
+    t8_rows = []
+    target_model = "Neural Demand (habit)"
+    if target_model in cross_elast_mean:
+        mat_mu = cross_elast_mean[target_model]
+        mat_se = cross_elast_std[target_model]
+        for i in range(G):
+            for j in range(G):
+                t8_rows.append({
+                    "Model": target_model,
+                    "Shock_Good": GOODS[i],
+                    "Response_Good": GOODS[j],
+                    "Elasticity_mean": mat_mu[i, j],
+                    "Elasticity_std": mat_se[i, j],
+                })
+    pd.DataFrame(t8_rows).round(4).to_csv(f"{out_dir}/table8_cross_elast.csv", index=False)
+    print(f"  Saved: {out_dir}/table8_cross_elast.csv")
 
     # ── Table 5: Mixture ──────────────────────────────────────────────────────
     cdf.round(4).assign(n_runs=N_RUNS).to_csv(f"{out_dir}/table5_mixture.csv", index=False)
@@ -1402,6 +1506,38 @@ def _make_tables(agg: dict, splits: dict, cfg: dict) -> None:
              r"  \end{threeparttable}",
              r"\end{table}", "")
 
+    # Extra Welfare Tables
+    for g_idx in welf_all_mean:
+        gn = GOODS[g_idx]
+        tex += L(
+            r"\begin{table}[htbp]",
+            r"  \centering",
+            rf"  \caption{{Consumer Surplus Loss from {int(ss*100)}\% {gn} Price Increase --- "
+            rf"Dominick\'s Analgesics ({N_RUNS} run(s); mean $\pm$ std)}}",
+            rf"  \label{{tab:dom_welfare_{gn.lower()}}}",
+            r"  \begin{threeparttable}",
+            r"    \begin{tabular}{lcr}",
+            r"      \toprule",
+            r"      \textbf{Model} & \textbf{CV Loss (\$)} & \textbf{vs Neural Demand (static)} \\",
+            r"      \midrule",
+        )
+        for nm in MODEL_NAMES:
+            v  = welf_all_mean[g_idx].get(nm, float("nan")) * 100.0
+            se = welf_all_std[g_idx].get(nm,  float("nan")) * 100.0
+            nw_mu_g = welf_all_mean[g_idx].get("Neural Demand (static)", float("nan")) * 100.0
+            diff = ("" if nm == "Neural Demand (static)" or np.isnan(nw_mu_g)
+                    else f"{100*(v-nw_mu_g)/abs(nw_mu_g):+.1f}\\%")
+            cv_str = (f"${v:+.4f} \\pm {se:.4f}$" if N_RUNS > 1 else f"${v:+.4f}$")
+            tex.append(f"      {nm} & {cv_str} & {diff} \\\\")
+        tex += L(r"      \bottomrule",
+                 r"    \end{tabular}",
+                 r"    \begin{tablenotes}\small",
+                 rf"      \item Compensating variation via 100-step Riemann sum, "
+                 rf"$p_{{{gn}}}\to(1+{ss})\,p_{{{gn}}}$.",
+                 r"    \end{tablenotes}",
+                 r"  \end{threeparttable}",
+                 r"\end{table}", "")
+
     # Table D4: MDP advantage
     mdp_rows = [
         ("LA-AIDS",                   r_a_mu,   r_a_se,   kl_a_mu,   kl_a_se,   "baseline"),
@@ -1410,6 +1546,11 @@ def _make_tables(agg: dict, splits: dict, cfg: dict) -> None:
         ("Neural Demand (CF)",        r_ncf_mu, r_ncf_se, kl_ncf_mu, kl_ncf_se, _pct(r_a_mu, r_ncf_mu)),
         ("Neural Demand (habit, CF)", r_mcf_mu, r_mcf_se, kl_mcf_mu, kl_mcf_se, _pct(r_a_mu, r_mcf_mu)),
     ]
+    dm_stat = agg["dm_stat_mu"]
+    dm_p    = agg["dm_p_mu"]
+    dm_diff = agg["dm_diff_mu"]
+    dm_sig  = "^{***}" if dm_p < 0.001 else "^{**}" if dm_p < 0.01 else "^{*}" if dm_p < 0.05 else ""
+    
     tex += L(
         r"\begin{table}[htbp]",
         r"  \centering",
@@ -1434,9 +1575,48 @@ def _make_tables(agg: dict, splits: dict, cfg: dict) -> None:
              rf"      \item Habit-decay $\hat{{\delta}}$ (habit model) = {delta_m_mu:.3f}$\pm${delta_m_se:.3f}; "
              rf"FE variant: {delta_mf_mu:.3f}$\pm${delta_mf_se:.3f}.",
              rf"      RMSE and KL: mean $\pm$ std over {N_RUNS} independent re-estimation(s).",
+             rf"      \item \textbf{{Diebold-Mariano Test}}: Static vs Habit (blocked by store). "
+             rf"DM stat = {dm_stat:.2f}{dm_sig} ($p={dm_p:.3e}$). "
+             rf"Positive stat favors Habit model.",
              r"    \end{tablenotes}",
              r"  \end{threeparttable}",
              r"\end{table}", "")
+
+    # Table D8: Cross-Price Elasticities (Neural Demand habit)
+    if "Neural Demand (habit)" in cross_elast_mean:
+        mat_mu = cross_elast_mean["Neural Demand (habit)"]
+        mat_se = cross_elast_std["Neural Demand (habit)"]
+        tex += L(
+            r"\begin{table}[htbp]",
+            r"  \centering",
+            rf"  \caption{{Cross-Price Elasticity Matrix (Neural Demand (habit)) "
+            rf"({N_RUNS} run(s); mean $\pm$ std)}}",
+            r"  \label{tab:dom_cross_elast_table}",
+            r"  \begin{threeparttable}",
+            r"    \begin{tabular}{lccc}",
+            r"      \toprule",
+            r"      & \multicolumn{3}{c}{\textbf{Price of}} \\",
+            r"      \cmidrule(lr){2-4}",
+            r"      \textbf{Quantity of} & \textbf{Aspirin} & \textbf{Acetaminophen} & \textbf{Ibuprofen} \\",
+            r"      \midrule",
+        )
+        for i in range(G):
+            row_cells = []
+            for j in range(G):
+                val = mat_mu[i, j]
+                se  = mat_se[i, j]
+                cell = (f"${val:.3f} \\pm {se:.3f}$" if N_RUNS > 1 else f"${val:.3f}$")
+                if i == j: cell = r"\textbf{" + cell + "}"
+                row_cells.append(cell)
+            tex.append(f"      {GOODS[i]} & " + " & ".join(row_cells) + r" \\")
+        tex += L(r"      \bottomrule",
+                 r"    \end{tabular}",
+                 r"    \begin{tablenotes}\small",
+                 r"      \item Row $i$, Column $j$: $\epsilon_{ij} = \partial \log q_i / \partial \log p_j$.",
+                 r"      \item Evaluated at mean test prices. Mean $\pm$ std over runs.",
+                 r"    \end{tablenotes}",
+                 r"  \end{threeparttable}",
+                 r"\end{table}", "")
 
     # Table D5: Mixture components
     tex += L(

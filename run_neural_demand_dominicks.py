@@ -36,7 +36,7 @@ import torch
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-EPOCHS = 5000 
+EPOCHS = 2000 
 
 np.random.seed(42)
 torch.manual_seed(42)

@@ -52,7 +52,7 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
     s_tr  = splits["s_tr"];  s_te  = splits["s_te"]
 
     delta_grid = np.asarray(cfg.get("delta_grid_identification",
-                                    np.linspace(0.1, 0.95, 18)), dtype=float)
+                                    np.arange(0.1, 0.96, 0.02)), dtype=float)
 
     sw = fit_mdp_delta_grid_dom(
         p_tr, y_tr, w_tr, ls_tr,

@@ -48,7 +48,7 @@ BASE_CFG = dict(
     # Experiment-level
     N_RUNS   = 5,
     N_OBS    = 800,
-    EPOCHS   = 5000,
+    EPOCHS   = 2000,
     DEVICE   = DEVICE,
 
     # Neural Demand (static) hyper-params
@@ -185,7 +185,7 @@ _GOOD_YLABEL = [
 ]
 
 # DGP display names (for heatmap rows)
-_DGP_ORDER = ["CES", "Quasilinear", "Leontief", "Stone–Geary", "Habit"]
+_DGP_ORDER = ["CES", "Quasilinear", "Leontief", "Stone–Geary", "Habit", "Endogenous CES"]
 
 # Models to highlight in the RMSE heatmap (subset for clarity)
 _HEATMAP_MODELS = [
