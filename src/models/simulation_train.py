@@ -20,6 +20,8 @@ def train_neural_irl(
     q_prev_data=None,
     # Legacy alias kept for backward compatibility: xbar_data → xb_prev_data
     xbar_data=None,
+    # Control-function residuals (endogeneity correction)
+    v_hat_data=None,
     device="cpu",
     verbose=False,
 ):
@@ -33,6 +35,14 @@ def train_neural_irl(
     Legacy callers that still pass ``xbar_data`` (single array) are
     redirected: xb_prev_data=xbar_data, q_prev_data derived from shares.
     That path is deprecated; prefer the two-array interface.
+
+    Control-function correction
+    ---------------------------
+    Pass ``v_hat_data`` (N, G) with first-stage OLS residuals to enable
+    the CF endogeneity correction.  The model must be constructed with
+    ``n_cf = G`` (or equal to the number of columns in v_hat_data).
+    At evaluation / welfare time set v_hat = zeros to recover the
+    structural demand without the endogenous component.
     """
     # ── Backward-compat shim ──────────────────────────────────────────────
     if xbar_data is not None and xb_prev_data is None:
@@ -45,10 +55,13 @@ def train_neural_irl(
         q_prev_data  = xbar_data
 
     mdp_mode = (xb_prev_data is not None) and (q_prev_data is not None)
+    cf_mode  = (v_hat_data is not None) and hasattr(model, 'n_cf') and (model.n_cf > 0)
 
     model = model.to(device)
+    # Adam gives per-parameter adaptive updates; under SGD + clip_grad_norm
+    # scalar parameters (e.g. log_delta) receive near-zero effective
+    # step sizes and fail to move.  Adam fixes this for all models.
     optimiser = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimiser, T_max=epochs)
     N = len(income)
     slut_start = int(epochs * slut_start_frac)
 
@@ -66,6 +79,10 @@ def train_neural_irl(
     else:
         XB_PREV = Q_PREV = None
 
+    # Control-function residuals tensor
+    V_HAT = (torch.tensor(v_hat_data, dtype=torch.float32, device=device)
+             if cf_mode else None)
+
     best_kl = float("inf")
     best_state = None
     history = []
@@ -74,47 +91,48 @@ def train_neural_irl(
         model.train()
         idx = torch.randperm(N, device=device)[:batch_size]
         lp_b, ly_b, w_b = LP[idx], LY[idx], W[idx]
+        vh_b = V_HAT[idx] if cf_mode else None
         optimiser.zero_grad()
 
         if mdp_mode:
             xbp_b = XB_PREV[idx]
             qp_b  = Q_PREV[idx]
-            w_pred = model(lp_b, ly_b, xbp_b, qp_b)
+            w_pred = model(lp_b, ly_b, xbp_b, qp_b, v_hat=vh_b)
         else:
-            w_pred = model(lp_b, ly_b)
+            w_pred = model(lp_b, ly_b, v_hat=vh_b)
 
         loss_kl = nn.KLDivLoss(reduction="batchmean")(torch.log(w_pred + 1e-10), w_b)
 
         lp_d = lp_b.detach().requires_grad_(True)
         if mdp_mode:
-            w_mn = model(lp_d, ly_b, xbp_b, qp_b)
+            w_mn = model(lp_d, ly_b, xbp_b, qp_b, v_hat=vh_b)
         else:
-            w_mn = model(lp_d, ly_b)
+            w_mn = model(lp_d, ly_b, v_hat=vh_b)
         grads = torch.autograd.grad(w_mn.sum(), lp_d, create_graph=True)[0]
         loss_mono = torch.mean(torch.clamp(grads, min=0))
 
         loss_slut = torch.tensor(0.0, device=device)
         if ep >= slut_start:
-            sub = torch.randperm(N, device=device)[:64]
+            sub   = torch.randperm(N, device=device)[:64]
+            vh_sub = V_HAT[sub] if cf_mode else None
             if mdp_mode:
                 loss_slut = model.slutsky_penalty(
-                    LP[sub], LY[sub], XB_PREV[sub], Q_PREV[sub])
+                    LP[sub], LY[sub], XB_PREV[sub], Q_PREV[sub], v_hat=vh_sub)
             else:
-                loss_slut = model.slutsky_penalty(LP[sub], LY[sub])
+                loss_slut = model.slutsky_penalty(LP[sub], LY[sub], v_hat=vh_sub)
 
         loss = loss_kl + lam_mono * loss_mono + lam_slut * loss_slut
         loss.backward()
         nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimiser.step()
-        scheduler.step()
 
         if ep % 50 == 0:
             model.eval()
             with torch.no_grad():
                 if mdp_mode:
-                    wp = model(LP, LY, XB_PREV, Q_PREV)
+                    wp = model(LP, LY, XB_PREV, Q_PREV, v_hat=V_HAT)
                 else:
-                    wp = model(LP, LY)
+                    wp = model(LP, LY, v_hat=V_HAT)
                 kl_full = nn.KLDivLoss(reduction="batchmean")(
                     torch.log(wp + 1e-10), W).item()
             if kl_full < best_kl:
@@ -127,13 +145,11 @@ def train_neural_irl(
             history.append({
                 "epoch": ep,
                 "kl":    loss_kl.item(),
-                "beta":  model.beta.item(),
                 "delta": delta_val,
             })
             if verbose:
                 delta_str = f" | delta={delta_val:.3f}" if mdp_mode else ""
-                print(f"    ep {ep:4d} | KL={loss_kl.item():.5f} "
-                      f"| beta={model.beta.item():.3f}{delta_str}")
+                print(f"    ep {ep:4d} | KL={loss_kl.item():.5f}{delta_str}")
 
     if best_state:
         model.load_state_dict(best_state)

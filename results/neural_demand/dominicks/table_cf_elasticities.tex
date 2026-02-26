@@ -1,0 +1,27 @@
+% ============================================================
+% Neural Demand — table_cf_elasticities (auto-generated)
+% N_RUNS = 1
+% ============================================================
+
+\begin{table}[htbp]
+  \centering
+  \caption{Own-Price Elasticities — CF Decomposition. Diagonal of the $G\times G$ elasticity matrix at test-mean prices. Full cross-price matrices shown in Figure~\ref{fig:cf_elasticity_heatmap}.}
+  \label{tab:table_cf_elasticities}
+  \begin{tabular}{lccc}
+    \toprule
+    \textbf{Model} & \textbf{$\epsilon_{00}$ (ASP)} & \textbf{$\epsilon_{11}$ (ACET)} & \textbf{$\epsilon_{22}$ (IBU)} \\
+    \midrule
+    LA-AIDS & $-0.849$ & $-1.420$ & $-1.140$ \\
+    BLP (IV) & $-0.998$ & $-1.769$ & $-0.587$ \\
+    QUAIDS & $-0.882$ & $-1.423$ & $-1.129$ \\
+    Series Est. & $-0.708$ & $-1.629$ & $-1.224$ \\
+    LDS (Shared) & $-0.163$ & $-0.211$ & $-0.186$ \\
+    LDS (GoodSpec) & $-0.165$ & $-0.205$ & $-0.181$ \\
+    LDS (Orth) & $-0.753$ & $-0.815$ & $-0.730$ \\
+    Neural Demand (static) & $-0.924$ & $-1.097$ & $-1.267$ \\
+    Neural Demand (habit) & $-0.883$ & $-1.139$ & $-1.065$ \\
+    Neural Demand (CF) & $-0.953$ & $-0.985$ & $-1.180$ \\
+    Neural Demand (habit, CF) & $-1.000$ & $-1.056$ & $-0.976$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}

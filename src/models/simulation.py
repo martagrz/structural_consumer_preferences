@@ -1,6 +1,7 @@
 """Simulation model facade with per-object module exports."""
 
-from .la_aids import AIDSBench
+from .hausman_iv import cf_first_stage
+from .la_aids import AIDSBench, QUAIDS, SeriesDemand
 from .blp_logit_iv import BLPBench
 from .ces_consumer import CESConsumer
 from .habit_formation_consumer import HabitFormationConsumer
@@ -12,6 +13,14 @@ from .linear_features import (
 )
 from .linear_irl import predict_linear_irl, run_linear_irl
 from .mdp_neural_irl import MDPNeuralIRL
+from .mdp_e2e_irl import (
+    MDPNeuralIRL_E2E,
+    WindowIRL,
+    compute_xbar_e2e,
+    build_window_features,
+    train_mdp_e2e,
+    train_window_irl,
+)
 from .mixtures import ContinuousVariationalMixture
 from .neural_irl import NeuralIRL
 from .quasilinear_consumer import QuasilinearConsumer
