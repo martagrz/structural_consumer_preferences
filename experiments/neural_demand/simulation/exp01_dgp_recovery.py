@@ -8,7 +8,7 @@ compensating variation across five data-generating processes:
 Models compared
 ---------------
   LA-AIDS, QUAIDS, Series Estm., LDS (Shared), LDS (GoodSpec),
-  LDS (Orth), Var. Mixture, Neural Demand (static),
+  LDS (Orth), Neural Demand (static),
   Neural Demand (habit), Neural Demand (CF), Neural Demand (habit, CF)
 
 For each DGP and each model we compute:
@@ -48,7 +48,6 @@ from src.models.simulation import (
     StoneGearyConsumer, HabitFormationConsumer,
     NeuralIRL, MDPNeuralIRL,
     MDPNeuralIRL_E2E,
-    ContinuousVariationalMixture,
     compute_xbar_e2e,
     cf_first_stage,
     features_shared, features_good_specific, features_orthogonalised,
@@ -78,7 +77,6 @@ MODEL_SPECS = [
     ("LDS (Shared)",                 "lirl-shared"),
     ("LDS (GoodSpec)",               "lirl-gs"),
     ("LDS (Orth)",                   "lirl-orth"),
-    ("Var. Mixture",                 "mixture"),
     ("Neural Demand (static)",       "nd-static"),
     ("Neural Demand (habit)",        "nd-habit"),
     ("Neural Demand (CF)",           "nd-static-cf"),
@@ -137,7 +135,6 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
     scatter_data      = {}
     curves_ces_full   = {}
     cross_elast_ces   = {}
-    comp_summary_ces  = None   # mixture component summary for the CES DGP
     train_hists       = {}     # {dgp_name: {model_name: hist}}
 
     for dgp_name, consumer in DGPs.items():
@@ -227,20 +224,6 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
         theta_sh = run_linear_irl(F_sh, curr_w_train, lr=0.05, epochs=3000, l2=1e-4)
         theta_gs = run_linear_irl(F_gs, curr_w_train, lr=0.05, epochs=3000, l2=1e-4)
         theta_or = run_linear_irl(F_or, curr_w_train, lr=0.05, epochs=3000, l2=1e-4)
-
-        # ── Variational Mixture ───────────────────────────────────────────────
-        mix_m = ContinuousVariationalMixture(K=4, n_goods=3)
-        try:
-            mix_m.fit(curr_p_pre, income, curr_w_train, n_iter=40)
-        except Exception as exc:
-            if verbose: print(f"    [VarMixture fit failed: {exc}]")
-
-        # Save mixture component summary for CES DGP (last seed value kept)
-        if dgp_name == "CES":
-            try:
-                comp_summary_ces = mix_m.get_component_summary()
-            except Exception:
-                pass
 
         # ── Neural Demand (static) ────────────────────────────────────────────
         nds_m = NeuralIRL(n_goods=3, hidden_dim=HIDDEN)
@@ -340,7 +323,6 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
         KW = dict(
             aids=aids_m, blp=blp_m, quaids=quaids_m, series=series_m,
             theta_sh=theta_sh, theta_gs=theta_gs, theta_or=theta_or,
-            mixture=mix_m,
             nds=nds_m, nds_hab=nds_hab_m,
             nds_cf=nds_cf_m, nds_hab_cf=nds_hab_cf_m,
             consumer=consumer, device=DEVICE,
@@ -424,7 +406,6 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
             curves_ces["Series Estm."]                 = predict_shares("series",      test_p, fixed_y, **KW)[:, 0]
             curves_ces["LDS (Shared)"]                 = predict_shares("lirl-shared", test_p, fixed_y, **KW)[:, 0]
             curves_ces["LDS (GoodSpec)"]               = predict_shares("lirl-gs",     test_p, fixed_y, **KW)[:, 0]
-            curves_ces["Var. Mixture"]                 = predict_shares("mixture",     test_p, fixed_y, **KW)[:, 0]
             curves_ces["Neural Demand (static)"]       = predict_shares("nd-static",   test_p, fixed_y, **KW)[:, 0]
             if nds_hab_m is not None:
                 # Hold the habit stock at its mean training value so we isolate
@@ -438,7 +419,7 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
             curves_ces["Neural Demand (CF)"]           = predict_shares("nd-static-cf", test_p, fixed_y, **KW)[:, 0]
 
             wp_nds = predict_shares("nd-static", p_post, income, **KW)
-            scatter_data = {"observed": w_post[:, 0], "predicted_nds": wp_nds[:, 0],
+            scatter_data = {"observed": curr_w_post[:, 0], "predicted_nds": wp_nds[:, 0],
                             "predicted_aids": aids_m.predict(p_post, income)[:, 0]}
 
             # ── All-goods demand curves for paper figures (shape: (80, 3)) ────────
@@ -451,7 +432,6 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
                 ("QUAIDS",                   "quaids",      {}),
                 ("Series Estm.",             "series",      {}),
                 ("LDS (Orth)",               "lirl-orth",   {}),
-                ("Var. Mixture",             "mixture",     {}),
                 ("Neural Demand (static)",   "nd-static",   {}),
             ]
             if nds_hab_m is not None:
@@ -498,7 +478,6 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
         scatter_data=scatter_data,
         curves_ces_full=curves_ces_full,
         cross_elast_ces=cross_elast_ces,
-        comp_summary_ces=comp_summary_ces,
         train_hists=train_hists,
     )
 

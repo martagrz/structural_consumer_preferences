@@ -1,0 +1,12 @@
+Model,CV_mean,CV_se
+LA-AIDS,-0.232182,0.0
+BLP (IV),-0.221176,0.0
+QUAIDS,-0.233916,0.0
+Series Est.,-0.2333,0.0
+LDS (Shared),-0.282266,0.0
+LDS (GoodSpec),-0.281783,0.0
+LDS (Orth),-0.240899,0.0
+Neural Demand (static),-0.235757,0.000493
+Neural Demand (habit),-0.210743,0.001235
+Neural Demand (CF),-0.224286,0.000692
+"Neural Demand (habit, CF)",-0.213126,0.001446

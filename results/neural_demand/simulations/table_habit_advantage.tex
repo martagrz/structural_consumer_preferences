@@ -1,33 +1,32 @@
 % ============================================================
 % Neural Demand — Habit Advantage Table (auto-generated)
-% N_RUNS = 5
+% N_RUNS = 2
 % ============================================================
 
 \begin{table}[htbp]
   \centering
-  \caption{Habit-State Augmentation Advantage --- Simulation  (5 runs; mean $\pm$ SE)}
+  \caption{Habit-State Augmentation Advantage --- Simulation  (2 runs; mean $\pm$ SE)}
   \label{tab:sim_habit_advantage}
   \begin{threeparttable}
   \begin{tabular}{lcccc}
     \toprule
     \textbf{Model} & \textbf{RMSE} & \textbf{KL Div.}    & \textbf{RMSE Red.\ (\%)} & \textbf{CV} \\
     \midrule
-    LA-AIDS & $0.04809 \pm 0.00023$ & $0.00964 \pm 0.00009$ & 0.0\% & {---} \\
-    BLP (IV) & $0.04955 \pm 0.00017$ & $0.02039 \pm 0.00009$ & -3.0\% & {---} \\
-    QUAIDS & $0.04809 \pm 0.00023$ & $0.00963 \pm 0.00009$ & 0.0\% & {---} \\
-    Series Estm. & $0.04697 \pm 0.00013$ & $0.00902 \pm 0.00005$ & 2.3\% & {---} \\
-    LDS (Shared) & $0.14991 \pm 0.00106$ & $0.11463 \pm 0.00177$ & -211.8\% & {---} \\
-    LDS (GoodSpec) & $0.15086 \pm 0.00125$ & $0.11596 \pm 0.00206$ & -213.7\% & {---} \\
-    LDS (Orth) & $0.04975 \pm 0.00024$ & $0.01030 \pm 0.00009$ & -3.4\% & {---} \\
-    Var. Mixture & $0.12183 \pm 0.00079$ & $0.07326 \pm 0.00101$ & -153.3\% & {---} \\
-    Neural Demand (static) & $0.04666 \pm 0.00045$ & $0.00891 \pm 0.00014$ & 3.0\% & {---} \\
-    Neural Demand (habit) & $0.00960 \pm 0.00026$ & $0.00040 \pm 0.00002$ & 80.0\% & {---} \\
-    Neural Demand (CF) & $0.04903 \pm 0.00033$ & $0.00976 \pm 0.00017$ & -2.0\% & {---} \\
-    Neural Demand (habit, CF) & $0.01574 \pm 0.00029$ & $0.00103 \pm 0.00003$ & 67.3\% & {---} \\
+    LA-AIDS & $0.04078 \pm 0.00414$ & $0.00768 \pm 0.00156$ & 0.0\% & {---} \\
+    BLP (IV) & $0.04231 \pm 0.00384$ & $0.01840 \pm 0.00159$ & -3.9\% & {---} \\
+    QUAIDS & $0.04036 \pm 0.00444$ & $0.00751 \pm 0.00168$ & 1.1\% & {---} \\
+    Series Estm. & $0.03795 \pm 0.00318$ & $0.00636 \pm 0.00116$ & 6.8\% & {---} \\
+    LDS (Shared) & $0.14405 \pm 0.00238$ & $0.10678 \pm 0.00430$ & -256.3\% & {---} \\
+    LDS (GoodSpec) & $0.14476 \pm 0.00305$ & $0.10777 \pm 0.00526$ & -257.9\% & {---} \\
+    LDS (Orth) & $0.04290 \pm 0.00393$ & $0.00844 \pm 0.00160$ & -5.3\% & {---} \\
+    Neural Demand (static) & $0.03950 \pm 0.00348$ & $0.00719 \pm 0.00131$ & 3.0\% & {---} \\
+    Neural Demand (habit) & $0.02076 \pm 0.00119$ & $0.00200 \pm 0.00026$ & 48.9\% & {---} \\
+    Neural Demand (CF) & $0.04029 \pm 0.00352$ & $0.00742 \pm 0.00130$ & 1.1\% & {---} \\
+    Neural Demand (habit, CF) & $0.02604 \pm 0.00358$ & $0.00306 \pm 0.00078$ & 36.4\% & {---} \\
     \bottomrule
   \end{tabular}
   \begin{tablenotes}\small
-    \item True DGP: \texttt{HabitFormationConsumer} with    $\delta_{true}=0.7$.    $\hat{\delta} = 0.700 \pm    0.000$ (mean $\pm$ SE over 5 runs).    True $\delta$ in identified set: 100\% of seeds.
+    \item True DGP: \texttt{HabitFormationConsumer} with    $\delta_{true}=0.7$.    $\hat{\delta} = 0.550 \pm    0.050$ (mean $\pm$ SE over 2 runs).    True $\delta$ in identified set: 100\% of seeds.
   \end{tablenotes}
   \end{threeparttable}
 \end{table}

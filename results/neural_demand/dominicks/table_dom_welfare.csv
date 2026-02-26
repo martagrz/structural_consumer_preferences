@@ -3,10 +3,10 @@ LA-AIDS,-0.232182,0.0
 BLP (IV),-0.221176,0.0
 QUAIDS,-0.233916,0.0
 Series Est.,-0.2333,0.0
-LDS (Shared),-0.282266,0.0
-LDS (GoodSpec),-0.281783,0.0
-LDS (Orth),-0.240899,0.0
-Neural Demand (static),-0.235757,0.000493
-Neural Demand (habit),-0.210743,0.001235
-Neural Demand (CF),-0.224286,0.000692
-"Neural Demand (habit, CF)",-0.213126,0.001446
+LDS (Shared),-0.285654,0.0
+LDS (GoodSpec),-0.285995,0.0
+LDS (Orth),-0.256126,0.0
+Neural Demand (static),-0.234583,0.000554
+Neural Demand (habit),-0.207589,5.8e-05
+Neural Demand (CF),-0.231324,0.000941
+"Neural Demand (habit, CF)",-0.216064,0.001541

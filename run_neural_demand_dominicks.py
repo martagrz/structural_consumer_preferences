@@ -89,14 +89,6 @@ BASE_CFG = dict(
     mdp_e2e_lam_slut     = 0.1,
     mdp_e2e_slut_start   = 0.25,
 
-    # Variational mixture
-    mix_K        = 6,
-    mix_subsamp  = 2000,
-    mix_n_iter   = 50,
-    mix_lr_mu    = 0.05,
-    mix_sigma2   = 0.1,
-    mix_n_spc    = 5,
-
     # Linear IRL
     lirl_epochs  = EPOCHS,
     lirl_lr      = 0.05,
@@ -112,12 +104,11 @@ BASE_CFG = dict(
 )
 
 FAST_CFG = dict(
-    N_RUNS           = 1,
+    N_RUNS           = 2,
     nirl_epochs      = 100,
     mdp_epochs       = 100,
     mdp_e2e_epochs   = 100,
-    lirl_epochs      = 300,
-    mix_n_iter       = 10,
+    lirl_epochs      = 100,
     delta_grid_identification = np.array([0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]),
 )
 
@@ -177,20 +168,18 @@ def _run_exp07(splits, cfg):
     """Full model sweep — generates all main paper figures.
 
     Trains every model (Neural Demand static/habit/joint/window, LDS variants,
-    Var. Mixture, store-FE variants, CF variants) for N_RUNS seeds using
+    store-FE variants, CF variants) for N_RUNS seeds using
     the same ``run_once`` / ``aggregate`` pipeline as the original
     Dominick's multiple-runs script, then writes:
 
     * fig_convergence.{pdf,png}         — Training convergence (KL + δ)
     * fig_mdp_advantage.{pdf,png}       — Cross-price demand matrix (3×3)
     * fig_scatter.{pdf,png}             — Observed vs predicted scatter
-    * fig_mixture.{pdf,png}             — Variational mixture components
     * fig_demand_curves.{pdf,png}       — Demand curves (shock good)
     * fig_cross_elast_heatmap.{pdf,png} — Cross-price elasticity heatmaps
     * fig_segmentation_sorting.{pdf,png}— Market segmentation diagnostics
     * fig_mdp_decomposition.{pdf,png}   — MDP structural decomposition
     * fig_rmse_bars.{pdf,png}           — RMSE bar chart (N_RUNS > 1)
-    * fig_delta_recovery.{pdf,png}      — δ violin across runs (N_RUNS > 1)
     * dominicks_latex.tex + table*.csv  — LaTeX tables and CSVs
     """
     import time as _time
@@ -227,6 +216,11 @@ def _run_exp07(splits, cfg):
     return all_results, agg
 
 
+def _run_exp08(splits, cfg):
+    from experiments.neural_demand.dominicks.exp07_first_stage import run
+    return run(splits, cfg)
+
+
 EXPERIMENTS = {
     "01": ("Predictive Accuracy",        _run_exp01),
     "02": ("Elasticities",               _run_exp02),
@@ -235,6 +229,7 @@ EXPERIMENTS = {
     "05": ("δ Identification",           _run_exp05),
     "06": ("CF Decomposition (Sec 2.4)", _run_exp06),
     "07": ("Full Model Figures",         _run_exp07),
+    "08": ("First-Stage Diagnostics",    _run_exp08),
 }
 
 

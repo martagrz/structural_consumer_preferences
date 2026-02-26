@@ -23,7 +23,6 @@ from src.models.dominicks import (
     NeuralIRL, NeuralIRL_FE,
     MDPNeuralIRL, MDPNeuralIRL_FE,
     WindowIRL,
-    VarMixture,
     _train,
     build_window_features,
     cf_first_stage,
@@ -55,11 +54,12 @@ MODEL_NAMES = [
     'LA-AIDS', 'BLP (IV)', 'QUAIDS', 'Series Est.', 'Neural Demand (window)',
     'LDS (Shared)', 'LDS (GoodSpec)', 'LDS (Orth)',
     'Neural Demand (static)', 'Neural Demand (habit)',
-    'Var. Mixture',
     # Store-FE variants
     'Neural Demand (FE)', 'Neural Demand (habit, FE)',
     # Control-function (CF) variants
     'Neural Demand (CF)', 'Neural Demand (habit, CF)', 'Neural Demand (habit, FE, CF)',
+    # Placebo
+    'Neural Demand (placebo)',
 ]
 
 
@@ -173,12 +173,6 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
         store_idx_tr=s_tr_idx,
         tag=f'MDP-IRL-FE s={seed}')
 
-    ns   = min(cfg['mix_subsamp'], len(p_tr))
-    mi   = np.random.choice(len(p_tr), ns, replace=False)
-    vmix = VarMixture(cfg, cfg['mix_K'], seed=seed)
-    vmix.fit(p_tr[mi], y_tr[mi], w_tr[mi])
-    cdf  = vmix.summary()
-
     # ── Control-Function (CF) endogeneity correction ──────────────────────
     _log_p_tr = np.log(np.maximum(p_tr, 1e-8))
     v_hat_tr, _cf_rsq = cf_first_stage(_log_p_tr, Z_tr)
@@ -210,7 +204,7 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
     perm_idx = np.random.permutation(len(xb_tr))
     xb_placebo_tr = xb_tr[perm_idx]
     qp_placebo_tr = qp_tr[perm_idx]
-    mdp_placebo_m, _ = _train(MDPNeuralIRL(cfg['mdp_hidden']),
+    mdp_placebo_m, hist_placebo_m = _train(MDPNeuralIRL(cfg['mdp_hidden']),
                               p_tr, y_tr, w_tr, 'mdp', cfg,
                               xb_prev_tr=xb_placebo_tr,
                               q_prev_tr=qp_placebo_tr,
@@ -227,7 +221,7 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
         nirl=nirl_m, mdp=mdp_m, mdp_placebo=mdp_placebo_m,
         nirl_fe=nirl_fe_m, mdp_fe=mdp_fe_m,
         nirl_cf=nirl_cf_m, mdp_cf=mdp_cf_m, mdp_fe_cf=mdp_fe_cf_m,
-        mix=vmix, ff=feat_shared, theta=th_sh,
+        ff=feat_shared, theta=th_sh,
         **_wirl_kw,
     )
 
@@ -252,7 +246,6 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
         ('Neural Demand (static)', 'nirl',       {},                                            None),
         ('Neural Demand (habit)',  'mdp',        {},                                            _mdp_te),
         ('Neural Demand (placebo)', 'mdp',       {'mdp': mdp_placebo_m},                        _mdp_placebo_te),
-        ('Var. Mixture',     'mix',        {},                                            None),
     ]
 
     # ── Table 1: accuracy ─────────────────────────────────────────────────
@@ -468,6 +461,11 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
                          xb_prev=xb_te, q_prev=qp_te, **KW)
     except Exception:
         kl_mcf = np.nan
+    try:
+        kl_mp = kl_div('mdp', p_te, y_te, w_te, cfg,
+                       xb_prev=_mdp_placebo_te[0], q_prev=_mdp_placebo_te[1], **{**KW, 'mdp': mdp_placebo_m})
+    except Exception:
+        kl_mp = np.nan
 
     # ── Demand curves ─────────────────────────────────────────────────────
     _xbr_sg, _qpr_sg = mdp_price_cond_habit(pgr, sg, p_te, xb_te, qp_te)
@@ -486,7 +484,7 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
         ('nirl',       {},                                    None,                   'Neural Demand (static)'),
         ('mdp',        {},                                    (_xbr_sg, _qpr_sg),     'Neural Demand (habit)'),
         ('mdp',        {},  (_xb_struct_sg, _qp_struct_sg),                          'Neural Demand (habit, struct)'),
-        ('mix',        {},                                    None,                   'Var. Mixture'),
+        ('mdp',        {'mdp': mdp_placebo_m},  (_mdp_placebo_te[0], _mdp_placebo_te[1]), 'Neural Demand (placebo)'),
     ]
     for sp, ek, xbt, lbl in _curve_specs_full:
         try:
@@ -538,6 +536,7 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
             ('nirl',       {},                                  None,                    'Neural Demand (static)'),
             ('mdp',        {},  (_xb_struct_g, _qp_struct_g),                           'Neural Demand (habit, struct)'),
             ('mdp',        {},  (_xbr_g, _qpr_g),                                       'Neural Demand (habit)'),
+            ('mdp',        {'mdp': mdp_placebo_m},  (_mdp_placebo_te[0], _mdp_placebo_te[1]), 'Neural Demand (placebo)'),
         ]
         _cv = {}
         for sp, ek, xbt, lbl in _cs:
@@ -557,8 +556,6 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
     r_ncf  = perf['Neural Demand (CF)']['RMSE']
     r_mcf  = perf['Neural Demand (habit, CF)']['RMSE']
 
-    dk = cdf.loc[cdf.pi.idxmax()]
-
     return dict(
         perf=perf, elast=elast, welf=welf, welf_all=welf_all,
         cross_elast=cross_elast,
@@ -572,24 +569,25 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
         kl_n=kl_n, kl_m=kl_m,
         kl_ncf=kl_ncf, kl_mcf=kl_mcf,
         kl_nf=kl_nf, kl_mf=kl_mf,
+        kl_mp=kl_mp,
         dm_stat=dm_stat, dm_p=dm_p, dm_diff=dm_diff,
         curves=curves,
         curves_by_shock=curves_by_shock,
         delta_mdp=delta_mdp,
         delta_mdp_fe=delta_mdp_fe,
         cf_rsq=_cf_rsq,
-        cdf=cdf, dk=dk,
         hist_n=hist_n, hist_m=hist_m,
         hist_nf=hist_nf, hist_mf=hist_mf,
         hist_ncf=hist_ncf, hist_mcf=hist_mcf,
+        hist_placebo=hist_placebo_m,
         hist_wirl=hist_wirl,
         nirl_m=nirl_m, mdp_m=mdp_m,
-        vmix=vmix,
         nirl_fe_m=nirl_fe_m, mdp_fe_m=mdp_fe_m,
         aids_m=aids_m, blp_m=blp_m, quaids_m=quaids_m, series_m=series_m,
         wirl_m=wirl_m,
         th_sh=th_sh, th_gs=th_gs, th_or=th_or,
         KW=KW, SPECS=SPECS,
+        mdp_placebo_te=_mdp_placebo_te,
     )
 
 
@@ -751,6 +749,7 @@ def aggregate(all_runs: list) -> dict:
         kl_mcf_mu=np.nanmean(_arr('kl_mcf')), kl_mcf_se=np.nanstd(_arr('kl_mcf'), ddof=ddof),
         kl_nf_mu=np.nanmean(_arr('kl_nf')),   kl_nf_se=np.nanstd(_arr('kl_nf'),   ddof=ddof),
         kl_mf_mu=np.nanmean(_arr('kl_mf')),   kl_mf_se=np.nanstd(_arr('kl_mf'),   ddof=ddof),
+        kl_mp_mu=np.nanmean(_arr('kl_mp')),   kl_mp_se=np.nanstd(_arr('kl_mp'),   ddof=ddof),
         # ── delta ────────────────────────────────────────────────────────
         delta_m_mu=np.nanmean(_arr('delta_mdp')), delta_m_se=np.nanstd(_arr('delta_mdp'), ddof=ddof),
         delta_mf_mu=np.nanmean(_arr('delta_mdp_fe')), delta_mf_se=np.nanstd(_arr('delta_mdp_fe'), ddof=ddof),
@@ -820,6 +819,7 @@ def _make_figures(agg: dict, splits: dict, cfg: dict) -> None:
         ("-",    2.0, TEAL,       "Neural Demand (habit, struct)"),
         ("--",   1.8, "#E91E63",  "Neural Demand (CF)"),
         ("-.",   1.8, "#FF5722",  "Neural Demand (habit, CF)"),
+        (":",    1.8, "#795548",  "Neural Demand (placebo)"),
     ]
     for sty, lw, col, lbl in curve_defs:
         mu  = curve_mean.get(lbl)
@@ -856,6 +856,7 @@ def _make_figures(agg: dict, splits: dict, cfg: dict) -> None:
         ("--",  1.8, "#6D4C41", "Neural Demand (window)",           "Neural Demand (window)"),
         ("b-.", 2.0, None,      "Neural Demand (static)",           "Neural Demand (static)"),
         ("-",   2.5, TEAL,      r"Neural Demand (habit, fixed $\bar{x}$)", "Neural Demand (habit, struct)"),
+        (":",   1.8, "#795548", "Neural Demand (placebo)",          "Neural Demand (placebo)"),
     ]
     _price_labels = [f"{g} Price ($/100 tab)" for g in GOODS]
     for shock_g in range(G):
@@ -916,6 +917,7 @@ def _make_figures(agg: dict, splits: dict, cfg: dict) -> None:
         ("hist_wirl", "#6D4C41", "Neural Demand (window)"),
         ("hist_ncf",  "#E91E63", "Neural Demand (CF)"),
         ("hist_mcf",  "#FF5722", "Neural Demand (habit, CF)"),
+        ("hist_placebo", "#795548", "Neural Demand (placebo)"),
     ]
     fig3, axes3 = plt.subplots(4, 2, figsize=(14, 18))
     axes3_flat = axes3.ravel()
@@ -956,6 +958,7 @@ def _make_figures(agg: dict, splits: dict, cfg: dict) -> None:
         from sklearn.metrics import mean_squared_error as _mse_fn
         KW_last  = last["KW"]
         th_or    = last["th_or"]
+        mdp_placebo_te = last["mdp_placebo_te"]
 
         scat_defs = [
             ("LA-AIDS",              "aids",      {},                            {},                                        "#E53935"),
@@ -968,10 +971,10 @@ def _make_figures(agg: dict, splits: dict, cfg: dict) -> None:
             ("N. Demand\n(habit)",   "mdp",       {},                            {"xb_prev": xb_te, "q_prev": qp_te},       TEAL),
             ("N. Demand\n(CF)",      "nirl-cf",   {},                            {},                                        "#E91E63"),
             ("N. Demand\n(habit, CF)","mdp-cf",   {},                            {"xb_prev": xb_te, "q_prev": qp_te},       "#FF5722"),
-            ("Var. Mixture",         "mix",       {},                            {},                                        "#8E24AA"),
             ("N. Demand\n(FE)",      "nirl-fe",   {},                            {"store_idx": s_te_idx},                   "#0288D1"),
             ("N. Demand\n(habit, FE)","mdp-fe",   {},                            {"xb_prev": xb_te, "q_prev": qp_te,
                                                                                   "store_idx": s_te_idx},                   "#00897B"),
+            ("N. Demand\n(placebo)", "mdp",       {},                            {"xb_prev": mdp_placebo_te[0], "q_prev": mdp_placebo_te[1]}, "#795548"),
         ]
         n_scat = len(scat_defs)
         y_te   = splits["y_te"]
@@ -1009,64 +1012,6 @@ def _make_figures(agg: dict, splits: dict, cfg: dict) -> None:
         print("  Saved: fig_scatter")
     except Exception as _e4:
         print(f"  [fig4 skipped: {_e4}]")
-
-    # ── Fig 5: Variational mixture components (last run) ─────────────────────
-    try:
-        cdf  = last["cdf"]
-        mix_K = cfg["mix_K"]
-        fig5, (axL, axR) = plt.subplots(1, 2, figsize=(14, 5.5))
-        cols = plt.cm.tab10(np.linspace(0, 0.6, mix_K))
-        xpos = np.arange(mix_K)
-        bars_m = axL.bar(xpos, cdf["pi"], color=cols, edgecolor="k", alpha=0.85)
-        for bar, (_, row) in zip(bars_m, cdf.iterrows()):
-            if row["pi"] > 0.01:
-                axL.text(bar.get_x() + bar.get_width() / 2,
-                         bar.get_height() + 0.008,
-                         f"ρ={row['rho']:.2f}", ha="center", fontsize=8)
-        axL.axhline(1 / mix_K, color="grey", ls="--", alpha=0.6, label="Uniform prior")
-        axL.set_xticks(xpos)
-        axL.set_xticklabels(
-            [f"K={int(r['K'])}\n[{r['alpha_asp']:.2f},{r['alpha_acet']:.2f},"
-             f"{r['alpha_ibu']:.2f}]" for _, r in cdf.iterrows()], fontsize=7)
-        axL.set_ylabel(r"Mixture Weight $\hat{\pi}_k$")
-        axL.set_ylim(0, 1.05)
-        axL.set_title(r"Component Weights $\hat{\pi}_k$", fontsize=11, fontweight="bold")
-        axL.legend(fontsize=9); axL.grid(True, axis="y", alpha=0.3)
-        for ki, (_, row) in enumerate(cdf.iterrows()):
-            axR.scatter(row["alpha_asp"], row["alpha_acet"],
-                        s=row["pi"] * 2500 + 30, c=[cols[ki]], alpha=0.8,
-                        label=f"K={int(row['K'])} (ρ={row['rho']:.2f})",
-                        edgecolors="k", linewidths=0.5)
-        axR.set_xlabel(r"$\hat{\alpha}_{\mathrm{Aspirin}}$", fontsize=11)
-        axR.set_ylabel(r"$\hat{\alpha}_{\mathrm{Acetaminophen}}$", fontsize=11)
-        axR.set_xlim(-0.05, 1.0); axR.set_ylim(-0.05, 1.0)
-        _minor = cdf[cdf["pi"] < 0.5]
-        if len(_minor) > 1:
-            _pts   = _minor[["alpha_asp", "alpha_acet"]].values
-            _dists = [np.linalg.norm(_pts[i] - _pts[j])
-                      for i in range(len(_pts)) for j in range(i + 1, len(_pts))]
-            _mean_dist = float(np.mean(_dists))
-            _diversity_note = f"Mean pairwise dist = {_mean_dist:.3f}"
-            if _mean_dist < 0.10:
-                _diversity_note += "\n⚠ Clustered — may absorb residual\nvariance, not distinct types"
-            axR.text(0.03, 0.97, _diversity_note, transform=axR.transAxes,
-                     fontsize=8, va="top", ha="left",
-                     bbox=dict(boxstyle="round,pad=0.3", fc="lightyellow", ec="#aaa", alpha=0.85))
-        axR.set_title(r"Component Centres $(\hat{\alpha}_{\mathrm{Asp}},"
-                      r"\hat{\alpha}_{\mathrm{Acet}})$"
-                      "\n(size $\\propto \\hat{\\pi}_k$)",
-                      fontsize=11, fontweight="bold")
-        axR.legend(fontsize=8, loc="upper right"); axR.grid(True, alpha=0.3)
-        fig5.suptitle(rf"Continuous Variational Mixture IRL ($K={mix_K}$) — "
-                      "Dominick's Analgesics  (last run)",
-                      fontsize=12, fontweight="bold")
-        fig5.tight_layout()
-        for ext in ("pdf", "png"):
-            fig5.savefig(f"{fig_dir}/fig_mixture.{ext}", dpi=150, bbox_inches="tight")
-        plt.close(fig5)
-        print("  Saved: fig_mixture")
-    except Exception as _e5:
-        print(f"  [fig5 skipped: {_e5}]")
 
     # ── Fig 6: RMSE bar chart with error bars ─────────────────────────────────
     if N_RUNS > 1:
@@ -1233,6 +1178,7 @@ def _make_tables(agg: dict, splits: dict, cfg: dict) -> None:
     os.makedirs(out_dir, exist_ok=True)
 
     N_RUNS     = agg["n_runs"]
+    ddof       = min(1, N_RUNS - 1)
     last       = agg["last"]
     all_runs   = agg["all_runs"]
     rmse_mean  = agg["rmse_mean"]
@@ -1243,7 +1189,6 @@ def _make_tables(agg: dict, splits: dict, cfg: dict) -> None:
     elast_std  = agg["elast_std"]
     welf_mean  = agg["welf_mean"]
     welf_std   = agg["welf_std"]
-    cdf        = last["cdf"]
 
     ss  = cfg["shock_pct"]
     sg  = cfg["shock_good"]
@@ -1259,6 +1204,7 @@ def _make_tables(agg: dict, splits: dict, cfg: dict) -> None:
     kl_m_mu   = agg["kl_m_mu"];   kl_m_se   = agg["kl_m_se"]
     kl_ncf_mu = agg["kl_ncf_mu"]; kl_ncf_se = agg["kl_ncf_se"]
     kl_mcf_mu = agg["kl_mcf_mu"]; kl_mcf_se = agg["kl_mcf_se"]
+    kl_mp_mu  = agg["kl_mp_mu"];  kl_mp_se  = agg["kl_mp_se"]
 
     delta_m_mu  = agg["delta_m_mu"]
     delta_m_se  = agg["delta_m_se"]
@@ -1369,10 +1315,6 @@ def _make_tables(agg: dict, splits: dict, cfg: dict) -> None:
                 })
     pd.DataFrame(t8_rows).round(4).to_csv(f"{out_dir}/table8_cross_elast.csv", index=False)
     print(f"  Saved: {out_dir}/table8_cross_elast.csv")
-
-    # ── Table 5: Mixture ──────────────────────────────────────────────────────
-    cdf.round(4).assign(n_runs=N_RUNS).to_csv(f"{out_dir}/table5_mixture.csv", index=False)
-    print(f"  Saved: {out_dir}/table5_mixture.csv")
 
     # ── LaTeX ─────────────────────────────────────────────────────────────────
     def L(*lines): return list(lines)
@@ -1539,13 +1481,29 @@ def _make_tables(agg: dict, splits: dict, cfg: dict) -> None:
                  r"\end{table}", "")
 
     # Table D4: MDP advantage
+    # Need to extract Placebo RMSE from perf dict
+    r_mp_mu = np.nanmean([r['perf']['Neural Demand (placebo)']['RMSE'] for r in all_runs])
+    r_mp_se = np.nanstd([r['perf']['Neural Demand (placebo)']['RMSE'] for r in all_runs], ddof=ddof)
+
     mdp_rows = [
         ("LA-AIDS",                   r_a_mu,   r_a_se,   kl_a_mu,   kl_a_se,   "baseline"),
         ("Neural Demand (static)",    r_n_mu,   r_n_se,   kl_n_mu,   kl_n_se,   _pct(r_a_mu, r_n_mu)),
         ("Neural Demand (habit)",     r_m_mu,   r_m_se,   kl_m_mu,   kl_m_se,   _pct(r_a_mu, r_m_mu)),
+        ("Neural Demand (placebo)",   r_mp_mu,  r_mp_se,  kl_mp_mu,  kl_mp_se,  _pct(r_a_mu, r_mp_mu)),
         ("Neural Demand (CF)",        r_ncf_mu, r_ncf_se, kl_ncf_mu, kl_ncf_se, _pct(r_a_mu, r_ncf_mu)),
         ("Neural Demand (habit, CF)", r_mcf_mu, r_mcf_se, kl_mcf_mu, kl_mcf_se, _pct(r_a_mu, r_mcf_mu)),
     ]
+    # Placebo row
+    # r_mp_mu = np.nanmean(_arr('perf')['Neural Demand (placebo)']['RMSE']) if 'Neural Demand (placebo)' in _arr('perf')[0] else np.nan
+    # r_mp_se = np.nanstd(_arr('perf')['Neural Demand (placebo)']['RMSE'], ddof=ddof) if 'Neural Demand (placebo)' in _arr('perf')[0] else np.nan
+    # kl_mp_mu = np.nanmean(_arr('kl_m_placebo')) if 'kl_m_placebo' in all_runs[0] else np.nan # Need to extract this
+    # kl_mp_se = np.nanstd(_arr('kl_m_placebo'), ddof=ddof) if 'kl_m_placebo' in all_runs[0] else np.nan
+
+    # Extract KL for placebo from all_runs manually since it wasn't in _arr keys
+    # kl_mp_vals = [kl_div('mdp', p_te, y_te, w_te, cfg, xb_prev=r['KW']['mdp_placebo'].xb_prev_data, q_prev=r['KW']['mdp_placebo'].q_prev_data) for r in all_runs] # Wait, this is tricky. run_once returns specific keys.
+    
+    # Better: Add kl_mp to run_once return dict
+    
     dm_stat = agg["dm_stat_mu"]
     dm_p    = agg["dm_p_mu"]
     dm_diff = agg["dm_diff_mu"]
@@ -1618,37 +1576,6 @@ def _make_tables(agg: dict, splits: dict, cfg: dict) -> None:
                  r"  \end{threeparttable}",
                  r"\end{table}", "")
 
-    # Table D5: Mixture components
-    tex += L(
-        r"\begin{table}[htbp]",
-        r"  \centering",
-        rf"  \caption{{Variational Mixture IRL: Consumer Segments --- Dominick\'s Analgesics "
-        rf"($K={cfg['mix_K']}$; last of {N_RUNS} run(s))}}",
-        r"  \label{tab:dom_mix}",
-        r"  \begin{threeparttable}",
-        r"    \begin{tabular}{cS[table-format=1.3]S[table-format=1.3]S[table-format=1.3]S[table-format=1.3]S[table-format=1.3]l}",
-        r"      \toprule",
-        r"      $k$ & {$\hat{\pi}_k$} & {$\hat{\alpha}_{\text{Asp}}$} "
-        r"& {$\hat{\alpha}_{\text{Acet}}$} & {$\hat{\alpha}_{\text{Ibu}}$} & {$\hat{\rho}$} & Segment \\",
-        r"      \midrule",
-    )
-    for _, row in cdf.iterrows():
-        if   row["alpha_asp"]  > 0.45: seg = "Aspirin-loyal (Bayer/Bufferin)"
-        elif row["alpha_acet"] > 0.45: seg = "Tylenol-loyal"
-        elif row["alpha_ibu"]  > 0.45: seg = "Advil/Motrin-loyal"
-        elif row["pi"]         > 0.25: seg = r"\textbf{Dominant / mixed}"
-        elif row["rho"]        > 0.55: seg = "Price-sensitive switchers"
-        else:                           seg = "Balanced"
-        tex.append(f"      {int(row['K'])} & {row['pi']:.3f} & {row['alpha_asp']:.3f} & "
-                   f"{row['alpha_acet']:.3f} & {row['alpha_ibu']:.3f} & {row['rho']:.3f} & {seg} \\\\")
-    tex += L(r"      \bottomrule",
-             r"    \end{tabular}",
-             r"    \begin{tablenotes}\small",
-             r"      \item Gaussian mixture in $(\bm{\alpha},\rho)$ CES parameter space.",
-             r"    \end{tablenotes}",
-             r"  \end{threeparttable}",
-             r"\end{table}", "")
-
     # Figure environments
     _se_band_note = (rf" Shaded bands indicate $\pm 1$ standard deviation across "
                      rf"{N_RUNS} independent re-estimations." if N_RUNS > 1 else "")
@@ -1663,9 +1590,6 @@ def _make_tables(agg: dict, splits: dict, cfg: dict) -> None:
         ("fig_scatter",
          f"Observed vs. Predicted Budget Shares — Dominick's Analgesics (last run).",
          "fig:dom_scatter"),
-        ("fig_mixture",
-         f"Continuous Variational Mixture IRL ($K={cfg['mix_K']}$) — "
-         f"Dominick's Analgesics (last run).", "fig:dom_mix"),
     ]
     if N_RUNS > 1:
         FDEFS += [

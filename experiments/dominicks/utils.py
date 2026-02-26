@@ -85,9 +85,6 @@ def pred(spec: str, p, y,
             xb = torch.tensor(xb_prev, dtype=torch.float32).to(dev)
             return kw['mdp_e2e'](lp, ly, xb).cpu().numpy()
 
-    if spec == 'mix':
-        return kw['mix'].predict(p, y)
-
     # ── Control-function (CF) variants ────────────────────────────────────────
     if spec == 'nirl-cf':
         with torch.no_grad():

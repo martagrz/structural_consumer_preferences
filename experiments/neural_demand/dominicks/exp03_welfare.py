@@ -337,7 +337,7 @@ def run(splits: dict, cfg: dict) -> tuple:
 
     all_results = []
     for ri in range(N_RUNS):
-        seed = 700 + ri * 17
+        seed = 42 + ri * 15
         t0   = time.time()
         print(f"  Run {ri+1}/{N_RUNS}  seed={seed}")
         r = run_once(seed, splits, cfg)

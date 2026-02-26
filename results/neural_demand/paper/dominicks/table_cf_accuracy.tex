@@ -1,0 +1,32 @@
+% ============================================================
+% Neural Demand — table_cf_accuracy (auto-generated)
+% N_RUNS = 5
+% ============================================================
+
+\begin{table}[htbp]
+  \centering
+  \caption{CF Correction --- Predictive Accuracy. Comparison of uncorrected and CF-corrected Neural Demand models. Out-of-sample RMSE, MAE, and KL on held-out test weeks.}
+  \label{tab:table_cf_accuracy}
+  \begin{threeparttable}
+  \begin{tabular}{lccc}
+    \toprule
+    \textbf{Model} & \textbf{RMSE} & \textbf{MAE} & \textbf{KL Div.} \\
+    \midrule
+    LA-AIDS & $0.07069$ & $0.05593 \pm 0.00000$ & $0.02311$ \\
+    BLP (IV) & $0.07766$ & $0.05991$ & $0.05564$ \\
+    QUAIDS & $0.06956$ & $0.05519$ & $0.02265$ \\
+    Series Est. & $0.06514$ & $0.05077 \pm 0.00000$ & $0.02000$ \\
+    LDS (Shared) & $0.09200$ & $0.07360$ & $0.03999$ \\
+    LDS (GoodSpec) & $0.09197$ & $0.07356$ & $0.03990$ \\
+    LDS (Orth) & $0.08679$ & $0.07061$ & $0.03508$ \\
+    Neural Demand (static) & $0.06456 \pm 0.00009$ & $0.04980 \pm 0.00016$ & $0.01978 \pm 0.00008$ \\
+    Neural Demand (habit) & $0.04754 \pm 0.00006$ & $0.03579 \pm 0.00007$ & $0.01042 \pm 0.00003$ \\
+    Neural Demand (CF) & $0.06801 \pm 0.00020$ & $0.05198 \pm 0.00013$ & $0.02133 \pm 0.00012$ \\
+    Neural Demand (habit, CF) & $0.04787 \pm 0.00011$ & $0.03612 \pm 0.00010$ & $0.01065 \pm 0.00005$ \\
+    \bottomrule
+  \end{tabular}
+  \begin{tablenotes}\small
+    \item Mean $\pm$ SE over 5 run(s). RMSE and MAE computed on held-out test weeks.
+  \end{tablenotes}
+  \end{threeparttable}
+\end{table}

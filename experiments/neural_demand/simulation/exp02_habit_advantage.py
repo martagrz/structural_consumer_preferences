@@ -47,7 +47,6 @@ from src.models.simulation import (
     QUAIDS,
     SeriesDemand,
     HabitFormationConsumer,
-    ContinuousVariationalMixture,
     NeuralIRL,
     MDPNeuralIRL,
     MDPNeuralIRL_E2E,
@@ -84,7 +83,6 @@ MODEL_SPECS = [
     ("LDS (Shared)",                 "lirl-shared"),
     ("LDS (GoodSpec)",               "lirl-gs"),
     ("LDS (Orth)",                   "lirl-orth"),
-    ("Var. Mixture",                 "mixture"),
     ("Neural Demand (static)",       "nd-static"),
     ("Neural Demand (habit)",        "nd-habit"),
     ("Neural Demand (CF)",           "nd-static-cf"),
@@ -156,14 +154,6 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
     theta_sh = run_linear_irl(F_sh, w_hab, lr=0.05, epochs=3000, l2=1e-4)
     theta_gs = run_linear_irl(F_gs, w_hab, lr=0.05, epochs=3000, l2=1e-4)
     theta_or = run_linear_irl(F_or, w_hab, lr=0.05, epochs=3000, l2=1e-4)
-
-    # ── Variational Mixture ────────────────────────────────────────────────────
-    mix_m = ContinuousVariationalMixture(K=4, n_goods=3)
-    try:
-        mix_m.fit(p_pre, income, w_hab, n_iter=40)
-    except Exception as exc:
-        if verbose:
-            print(f"    [VarMixture fit failed: {exc}]")
 
     # ── Neural Demand (static) ─────────────────────────────────────────────────
     nds_static = NeuralIRL(n_goods=3, hidden_dim=HIDDEN)
@@ -254,7 +244,6 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
     KW = dict(
         aids=aids_hab, blp=blp_hab, quaids=quaids_hab, series=series_hab,
         theta_sh=theta_sh, theta_gs=theta_gs, theta_or=theta_or,
-        mixture=mix_m,
         nds=nds_static,
         nds_hab=nds_hab,   xbar_hab=xbar_hat,
         nds_cf=nds_cf_m,

@@ -70,7 +70,7 @@ BASE_CFG = dict(
 # "Fast" override for rapid development / CI
 FAST_CFG = dict(
     N_RUNS      = 2,
-    N_OBS       = 500,
+    N_OBS       = 100,
     EPOCHS      = 100,
     DELTA_GRID  = np.array([0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]),
     RHO_GRID    = [0.0, 0.6],
@@ -152,7 +152,6 @@ _MODEL_DISPLAY = {
     "LDS (Shared)":                 "LDS (Shared)",
     "LDS (GoodSpec)":               "LDS (GoodSpec)",
     "LDS (Orth)":                   "LDS (Orth)",
-    "Var. Mixture":                 "Var. Mixture",
     "Neural Demand (static)":       "Neural Demand (static)",
     "Neural Demand (habit)":        "Neural Demand (habit)",
     "Neural Demand (CF)":           "Neural Demand (CF)",
@@ -169,7 +168,6 @@ _PAPER_STYLE = {
     "LDS (Shared)":                 dict(color="#039BE5", ls=":",  lw=1.5),
     "LDS (GoodSpec)":               dict(color="#00ACC1", ls=":",  lw=1.5),
     "LDS (Orth)":                   dict(color="#006064", ls=":",  lw=1.5),
-    "Var. Mixture":                 dict(color="#8E24AA", ls="-.", lw=1.8),
     "Neural Demand (static)":       dict(color="#1E88E5", ls="-.", lw=2.0),
     "Neural Demand (habit)":        dict(color="#00897B", ls="-",  lw=2.5),
     "Neural Demand (CF)":           dict(color="#283593", ls="--", lw=2.0),
@@ -544,95 +542,6 @@ def _plot_habit_rmse_bar(agg2: dict, fig_dir: str) -> None:
     _save_fig(fig, fig_dir, "paper_habit_rmse_bar")
 
 
-def _plot_mixture_weights(agg1: dict, fig_dir: str) -> None:
-    """Two-panel figure showing the Variational Mixture components for the CES DGP.
-
-    Left panel  — bar chart of mixture weights  π̂_k with ρ̂ annotations.
-    Right panel — scatter of component centres (α_food, α_fuel) scaled by π_k.
-    Uses the last-seed component summary stored in agg1["last"]["comp_summary_ces"].
-    """
-    import pandas as pd
-
-    cdf = agg1.get("last", {}).get("comp_summary_ces", None)
-    if cdf is None or (hasattr(cdf, "__len__") and len(cdf) == 0):
-        print("  [warn] No mixture component summary available for CES DGP; skipping.")
-        return
-
-    if not isinstance(cdf, pd.DataFrame):
-        try:
-            cdf = pd.DataFrame(cdf)
-        except Exception as exc:
-            print(f"  [warn] Could not convert comp_summary_ces to DataFrame: {exc}")
-            return
-
-    mix_K = len(cdf)
-    cols  = plt.cm.tab10(np.linspace(0, 0.6, mix_K))
-    xpos  = np.arange(mix_K)
-
-    fig, (axL, axR) = plt.subplots(1, 2, figsize=(14, 5.5))
-
-    # ── Left: mixture weights bar chart ───────────────────────────────────────
-    bars = axL.bar(xpos, cdf["pi"], color=cols, edgecolor="k", alpha=0.85)
-    for bar, (_, row) in zip(bars, cdf.iterrows()):
-        if row["pi"] > 0.01:
-            axL.text(bar.get_x() + bar.get_width() / 2,
-                     bar.get_height() + 0.008,
-                     f"ρ={row['rho']:.2f}", ha="center", fontsize=8)
-    axL.axhline(1 / mix_K, color="grey", ls="--", alpha=0.6, label="Uniform prior")
-    axL.set_xticks(xpos)
-    axL.set_xticklabels(
-        [f"K={int(r['component'])}\n"
-         f"[{r['alpha_food']:.2f},{r['alpha_fuel']:.2f},{r['alpha_other']:.2f}]"
-         for _, r in cdf.iterrows()],
-        fontsize=7,
-    )
-    axL.set_ylabel(r"Mixture Weight $\hat{\pi}_k$", fontsize=11)
-    axL.set_ylim(0, 1.05)
-    axL.set_title(r"Component Weights $\hat{\pi}_k$", fontsize=11, fontweight="bold")
-    axL.legend(fontsize=9)
-    axL.grid(True, axis="y", alpha=0.3)
-
-    # ── Right: component centres scatter ──────────────────────────────────────
-    for ki, (_, row) in enumerate(cdf.iterrows()):
-        axR.scatter(row["alpha_food"], row["alpha_fuel"],
-                    s=row["pi"] * 2500 + 30,
-                    c=[cols[ki]], alpha=0.8,
-                    label=f"K={int(row['component'])} (ρ={row['rho']:.2f})",
-                    edgecolors="k", linewidths=0.5)
-    axR.set_xlabel(r"$\hat{\alpha}_{\mathrm{Food}}$", fontsize=11)
-    axR.set_ylabel(r"$\hat{\alpha}_{\mathrm{Fuel}}$", fontsize=11)
-    axR.set_xlim(-0.05, 1.05)
-    axR.set_ylim(-0.05, 1.05)
-
-    # Diversity note for minor components
-    _minor = cdf[cdf["pi"] < 0.5]
-    if len(_minor) > 1:
-        _pts   = _minor[["alpha_food", "alpha_fuel"]].values
-        _dists = [np.linalg.norm(_pts[i] - _pts[j])
-                  for i in range(len(_pts)) for j in range(i + 1, len(_pts))]
-        _mean_dist = float(np.mean(_dists))
-        _note = f"Mean pairwise dist = {_mean_dist:.3f}"
-        if _mean_dist < 0.10:
-            _note += "\n⚠ Clustered — may absorb residual\nvariance, not distinct types"
-        axR.text(0.03, 0.97, _note, transform=axR.transAxes,
-                 fontsize=8, va="top", ha="left",
-                 bbox=dict(boxstyle="round,pad=0.3", fc="lightyellow", ec="#aaa", alpha=0.85))
-
-    axR.set_title(r"Component Centres $(\hat{\alpha}_{\mathrm{Food}}, \hat{\alpha}_{\mathrm{Fuel}})$"
-                  "\n" r"(size $\propto \hat{\pi}_k$)",
-                  fontsize=11, fontweight="bold")
-    axR.legend(fontsize=8, loc="upper right")
-    axR.grid(True, alpha=0.3)
-
-    n_runs = agg1.get("n_runs", 1)
-    fig.suptitle(
-        rf"Continuous Variational Mixture ($K={mix_K}$) — CES DGP  (last of {n_runs} runs)",
-        fontsize=12, fontweight="bold",
-    )
-    fig.tight_layout()
-    _save_fig(fig, fig_dir, "paper_mixture_weights")
-
-
 def _plot_convergence(agg1: dict | None, agg2: dict | None, fig_dir: str) -> None:
     """Training convergence plots for all neural demand models.
 
@@ -712,7 +621,7 @@ def _plot_convergence(agg1: dict | None, agg2: dict | None, fig_dir: str) -> Non
         train_conv1 = agg1.get("train_conv", {})
         n_runs1     = agg1.get("n_runs", 1)
         dgp_order   = [d for d in ["CES", "Quasilinear", "Leontief",
-                                    "Stone–Geary", "Habit"]
+                                    "Stone–Geary", "Habit", "Endogenous CES"]
                        if d in train_conv1]
         nd_models   = list(_CONV_STYLE.keys())
 
@@ -791,7 +700,6 @@ def make_paper_figures(results: dict, cfg: dict) -> None:
     paper_profile_kl                Profile KL for δ identification (Exp 02/03)
     paper_cf_endogeneity            RMSE vs ρ for CF correction (Exp 04)
     paper_habit_rmse_bar            RMSE bar chart — Habit DGP (Exp 02)
-    paper_mixture_weights           Var. Mixture component weights & centres — CES DGP (Exp 01)
     paper_convergence_habit_dgp     Training KL curves — 4 neural models on Habit DGP (Exp 02)
     paper_convergence_by_dgp        Training KL curves — 4 neural models × all DGPs (Exp 01)
     """
@@ -868,13 +776,6 @@ def make_paper_figures(results: dict, cfg: dict) -> None:
             _plot_habit_rmse_bar(agg2, fig_dir)
         except Exception as e:
             print(f"  [warn] Habit RMSE bar chart failed: {e}")
-
-    # ── Fig 8: Variational Mixture component weights — CES DGP ────────────────
-    if agg1 is not None:
-        try:
-            _plot_mixture_weights(agg1, fig_dir)
-        except Exception as e:
-            print(f"  [warn] Mixture weights figure failed: {e}")
 
     # ── Fig 9: Training convergence curves ────────────────────────────────────
     try:

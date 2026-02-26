@@ -44,7 +44,7 @@ LIRL_MODELS   = ["LDS (Shared)", "LDS (GoodSpec)", "LDS (Orth)"]
 STATIC_MODELS = ["LA-AIDS", "QUAIDS", "Series Estm."] + LIRL_MODELS + ["Neural Demand (static)"]
 HABIT_MODELS  = STATIC_MODELS + ["Neural Demand (habit)"]
 CF_MODELS     = HABIT_MODELS + ["Neural Demand (CF)", "Neural Demand (habit, CF)"]
-ALL_MODELS    = CF_MODELS + ["Var. Mixture"]
+ALL_MODELS    = CF_MODELS
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  PLOT STYLE
@@ -63,7 +63,6 @@ STYLE = {
     "Neural Demand (habit)":        dict(color="#00897B",  ls="-",  lw=2.5),
     "Neural Demand (CF)":           dict(color="#283593",  ls="--", lw=2.0),
     "Neural Demand (habit, CF)":    dict(color="#1B5E20",  ls="--", lw=2.0),
-    "Var. Mixture":                 dict(color="#8E24AA",  ls="-.", lw=1.8),
 }
 
 
@@ -84,8 +83,6 @@ def predict_shares(spec, p, y, *,
                    theta_sh=None,   # LDS (Shared) coefficients
                    theta_gs=None,   # LDS (GoodSpec) coefficients
                    theta_or=None,   # LDS (Orth) coefficients
-                   # Variational Mixture
-                   mixture=None,    # ContinuousVariationalMixture
                    consumer=None,
                    device="cpu"):
     """Predict budget shares for one of the paper's demand model specs.
@@ -95,8 +92,7 @@ def predict_shares(spec, p, y, *,
     spec         : one of "truth", "aids", "quaids", "series",
                    "lirl-shared", "lirl-gs", "lirl-orth",
                    "nd-static", "nd-habit",
-                   "nd-static-cf", "nd-habit-cf",
-                   "mixture"
+                   "nd-static-cf", "nd-habit-cf"
     p            : (N, G) prices
     y            : (N,) or scalar income
     aids         : fitted LAAIDS / AIDSBench
@@ -115,7 +111,6 @@ def predict_shares(spec, p, y, *,
     v_hat        : (N, G) CF first-stage residuals; pass zeros (or None) at
                    evaluation / welfare / counterfactual time to recover
                    the structural demand net of endogeneity bias
-    mixture      : fitted ContinuousVariationalMixture
     consumer     : true consumer for "truth" spec
     device       : torch device string
     """
@@ -147,8 +142,6 @@ def predict_shares(spec, p, y, *,
     if spec == "lirl-orth":
         F = features_orthogonalised(p, y)
         return predict_linear_irl(F, theta_or)
-    if spec == "mixture":
-        return mixture.predict(p, y)
     if spec == "nd-static":
         with torch.no_grad():
             lp = torch.log(torch.tensor(np.maximum(p, 1e-8),
