@@ -3,3 +3,7 @@ data/
 .venv/*
 __pycache__/*
 .DS_Store
+results/neural_demand/dominicks/models/*
+results/neural_demand/simulations/models/*
+results/neural_demand/long/*
+results/neural_demand/paper/*
