@@ -14,7 +14,7 @@ Usage
   --weekly     Path to the Dominick's weekly movement file (WBER).
   --upc        Path to the UPC catalogue file.
   --fast       Reduced N_RUNS and training epochs for quick testing.
-  --exp        Subset of experiments to run: 01 02 03 04 05 06 (default: all).
+  --exp        Subset of experiments to run: 01 02 03 04 05 06 07 08 09 (default: all).
 
 Outputs are written to
   results/neural_demand/dominicks/
@@ -36,7 +36,7 @@ import torch
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-EPOCHS = 5000 
+EPOCHS = 10000 
 
 np.random.seed(42)
 torch.manual_seed(42)
@@ -129,7 +129,7 @@ def _parse_args():
     p.add_argument("--load",   action="store_true",
                    help="Load pre-trained models from cache (default: train from scratch)")
     p.add_argument("--exp", nargs="+", type=str, default=None,
-                   help="Experiments to run: 01 02 03 04 05 06 07 (default: all)")
+                   help="Experiments to run: 01 02 03 04 05 06 07 08 09 (default: all)")
     return p.parse_args()
 
 
@@ -224,6 +224,11 @@ def _run_exp08(splits, cfg):
     return run(splits, cfg)
 
 
+def _run_exp09(splits, cfg):
+    from experiments.neural_demand.dominicks.exp09_regularity_dashboard import run
+    return run(splits, cfg)
+
+
 EXPERIMENTS = {
     "01": ("Predictive Accuracy",        _run_exp01),
     "02": ("Elasticities",               _run_exp02),
@@ -233,6 +238,7 @@ EXPERIMENTS = {
     "06": ("CF Decomposition (Sec 2.4)", _run_exp06),
     "07": ("Full Model Figures",         _run_exp07),
     "08": ("First-Stage Diagnostics",    _run_exp08),
+    "09": ("Regularity Dashboard",       _run_exp09),
 }
 
 

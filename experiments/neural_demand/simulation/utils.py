@@ -158,7 +158,14 @@ def predict_shares(spec, p, y, *,
             if xbar_hab is None:
                 xbar_hab = np.zeros((N, G))
             xb = torch.tensor(xbar_hab, dtype=torch.float32, device=device)
-            return nds_hab(lp, ly, xb).cpu().numpy()
+
+            # Handle both MDPNeuralIRL (needs q_prev) and MDPNeuralIRL_E2E (no q_prev)
+            if nds_hab.__class__.__name__ == "MDPNeuralIRL":
+                qp = (torch.tensor(q_prev_hab, dtype=torch.float32, device=device)
+                      if q_prev_hab is not None else xb.clone())
+                return nds_hab(lp, ly, xb, qp).cpu().numpy()
+            else:
+                return nds_hab(lp, ly, xb).cpu().numpy()
     if spec == "nd-static-cf":
         # NeuralIRL(n_cf=G): pass v_hat at training time; zeros at eval/welfare time
         with torch.no_grad():

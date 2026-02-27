@@ -48,7 +48,7 @@ BASE_CFG = dict(
     # Experiment-level
     N_RUNS   = 5,
     N_OBS    = 800,
-    EPOCHS   = 5000,
+    EPOCHS   = 10000,
     DEVICE   = DEVICE,
 
     # Neural Demand (static) hyper-params

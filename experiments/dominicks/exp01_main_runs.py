@@ -891,7 +891,6 @@ def _make_figures(agg: dict, splits: dict, cfg: dict) -> None:
                                     (mu[:, resp_g] - std[:, resp_g]).clip(0),
                                      mu[:, resp_g] + std[:, resp_g],
                                     color=line.get_color(), alpha=0.10)
-            ax.axvline(p_mn[shock_g], color="orange", ls=":", lw=1.2, alpha=0.8)
             ax.set_xlabel(_price_labels[shock_g], fontsize=9)
             ax.set_ylabel(f"$w_{resp_g}$  ({GOODS[resp_g]})", fontsize=9)
             ax.grid(True, alpha=0.3)
@@ -1169,8 +1168,6 @@ def _make_figures(agg: dict, splits: dict, cfg: dict) -> None:
             if _mdp_str is not None and not np.all(np.isnan(_mdp_str)):
                 ax9.fill_between(pgr, _mdp_str[:, 0], _mdp_tot[:, 0],
                                  alpha=0.22, color=TEAL, label="← Sorting contribution")
-        ax9.axvline(p_mn[sg], color="orange", ls=":", lw=1.5, alpha=0.9,
-                    label="Mean ibuprofen price")
         ax9.set_xlabel(f"{GOODS[sg]} price ($/100 tab)", fontsize=12)
         ax9.set_ylabel(f"{GOODS[0]} budget share $w_{{asp}}$", fontsize=12)
         ax9.set_title(
