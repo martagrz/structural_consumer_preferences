@@ -98,7 +98,7 @@ def _parse_args():
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _run_exp01(cfg):
-    from experiments.neural_demand.simulation.exp01_dgp_recovery import run
+    from experiments.simulation.exp01_dgp_recovery import run
     print("\n" + "=" * 68)
     print("  Exp 01 — DGP Recovery")
     print("=" * 68)
@@ -106,7 +106,7 @@ def _run_exp01(cfg):
 
 
 def _run_exp02(cfg):
-    from experiments.neural_demand.simulation.exp02_habit_advantage import run
+    from experiments.simulation.exp02_habit_advantage import run
     print("\n" + "=" * 68)
     print("  Exp 02 — Habit Advantage")
     print("=" * 68)
@@ -114,7 +114,7 @@ def _run_exp02(cfg):
 
 
 def _run_exp03(cfg):
-    from experiments.neural_demand.simulation.exp03_delta_identification import run
+    from experiments.simulation.exp03_delta_identification import run
     # Use a finer delta grid for the identification experiment
     id_cfg = dict(cfg)
     id_cfg["DELTA_GRID"] = np.linspace(0.1, 0.95, 30)
@@ -127,7 +127,7 @@ def _run_exp03(cfg):
 
 
 def _run_exp04(cfg):
-    from experiments.neural_demand.simulation.exp04_cf_endogeneity import run
+    from experiments.simulation.exp04_cf_endogeneity import run
     print("\n" + "=" * 68)
     print("  Exp 04 — CF Endogeneity Correction  (Section 2.4)")
     print("=" * 68)
@@ -152,9 +152,9 @@ _MODEL_DISPLAY = {
     "LA-AIDS":                      "LA-AIDS",
     "QUAIDS":                       "QUAIDS",
     "Series Estm.":                 "Series Estimator",
-    "LDS (Shared)":                 "LDS (Shared)",
-    "LDS (GoodSpec)":               "LDS (GoodSpec)",
-    "LDS (Orth)":                   "LDS (Orth)",
+    "Linear Demand (Shared)":                 "Linear Demand (Shared)",
+    "Linear Demand (GoodSpec)":               "Linear Demand (GoodSpec)",
+    "Linear Demand (Orth)":                   "Linear Demand (Orth)",
     "Neural Demand (static)":       "Neural Demand (static)",
     "Neural Demand (habit)":        "Neural Demand (habit)",
     "Neural Demand (CF)":           "Neural Demand (CF)",
@@ -168,9 +168,9 @@ _PAPER_STYLE = {
     "LA-AIDS":                      dict(color="#E53935", ls="--", lw=2.0),
     "QUAIDS":                       dict(color="#43A047", ls="-.", lw=2.0),
     "Series Estimator":             dict(color="#FB8C00", ls=":",  lw=2.0),
-    "LDS (Shared)":                 dict(color="#039BE5", ls=":",  lw=1.5),
-    "LDS (GoodSpec)":               dict(color="#00ACC1", ls=":",  lw=1.5),
-    "LDS (Orth)":                   dict(color="#006064", ls=":",  lw=1.5),
+    "Linear Demand (Shared)":                 dict(color="#039BE5", ls=":",  lw=1.5),
+    "Linear Demand (GoodSpec)":               dict(color="#00ACC1", ls=":",  lw=1.5),
+    "Linear Demand (Orth)":                   dict(color="#006064", ls=":",  lw=1.5),
     "Neural Demand (static)":       dict(color="#1E88E5", ls="-.", lw=2.0),
     "Neural Demand (habit)":        dict(color="#00897B", ls="-",  lw=2.5),
     "Neural Demand (CF)":           dict(color="#283593", ls="--", lw=2.0),
@@ -191,14 +191,14 @@ _DGP_ORDER = ["CES", "Quasilinear", "Leontief", "Stone–Geary", "Habit", "Endog
 # Models to highlight in the RMSE heatmap (subset for clarity)
 _HEATMAP_MODELS = [
     "LA-AIDS",
-    "LDS (Orth)",
+    "Linear Demand (Orth)",
     "Neural Demand (static)",
     "Neural Demand (habit)",
     "Neural Demand (habit, CF)",
 ]
 _HEATMAP_COL_LABELS = [
     "AIDS",
-    "LDS (Orth)",
+    "Linear Demand (Orth)",
     "Neural Demand (static)",
     "Neural Demand (habit)",
     "Neural Demand (habit, CF)",
@@ -258,9 +258,19 @@ def _plot_rmse_heatmap(agg1: dict, fig_dir: str) -> None:
                     fontsize=8.5, color=contrast, fontweight="bold")
 
     ax.set_xticks(range(ncols))
-    ax.set_xticklabels(col_labels, fontsize=10)
+    # Rotate labels 45 degrees and align them to the left
+    ax.set_xticklabels(
+        col_labels, 
+        fontsize=10, 
+        rotation=45, 
+        ha="left", 
+        rotation_mode="anchor"
+    )
+    
     ax.set_yticks(range(nrows))
     ax.set_yticklabels(dgp_order, fontsize=10)
+    
+    # Ensure the labels appear at the top
     ax.tick_params(axis="x", top=True, bottom=False,
                    labeltop=True, labelbottom=False)
 
@@ -287,7 +297,7 @@ def _plot_demand_curves_by_good(agg2: dict, fig_dir: str,
     p_grid  = np.linspace(1, 10, 80)
     ordered = ["Truth"] + [k for k in curves_mean.keys() if k != "Truth"]
     if dgp_label == "Habit":
-        ordered = [k for k in ordered if k not in ("LDS (Shared)", "LDS (GoodSpec)")]
+        ordered = [k for k in ordered if k not in ("Linear Demand (Shared)", "Linear Demand (GoodSpec)")]
 
     for good_idx, ylabel in enumerate(_GOOD_YLABEL):
         fig, ax = plt.subplots(figsize=(8, 5))
@@ -522,7 +532,7 @@ def _plot_habit_rmse_bar(agg2: dict, fig_dir: str) -> None:
         return
 
     model_names = list(rmse_agg.keys())
-    model_names = [m for m in model_names if m not in ("LDS (Shared)", "LDS (GoodSpec)")]
+    model_names = [m for m in model_names if m not in ("Linear Demand (Shared)", "Linear Demand (GoodSpec)")]
     means = [rmse_agg[nm]["mean"] for nm in model_names]
     ses   = [rmse_agg[nm]["se"]   for nm in model_names]
     disps = [_MODEL_DISPLAY.get(nm, nm) for nm in model_names]

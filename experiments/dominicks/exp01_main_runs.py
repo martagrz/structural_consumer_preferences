@@ -20,9 +20,9 @@ from src.models.dominicks import (
     BLPLogitIV,
     QUAIDS,
     SeriesDemand,
-    NeuralIRL, NeuralIRL_FE,
-    MDPNeuralIRL, MDPNeuralIRL_FE,
-    WindowIRL,
+    StaticND, StaticND_FE,
+    HabitND, HabitND_FE,
+    WindowND,
     _train,
     build_window_features,
     cf_first_stage,
@@ -52,7 +52,7 @@ from experiments.dominicks.utils import (
 
 MODEL_NAMES = [
     'LA-AIDS', 'BLP (IV)', 'QUAIDS', 'Series Est.', 'Neural Demand (window)',
-    'LDS (Shared)', 'LDS (GoodSpec)', 'LDS (Orth)',
+    'Linear Demand (Shared)', 'Linear Demand (GoodSpec)', 'Linear Demand (Orth)',
     'Neural Demand (static)', 'Neural Demand (habit)',
     # Store-FE variants
     'Neural Demand (FE)', 'Neural Demand (habit, FE)',
@@ -130,11 +130,11 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
     th_gs = run_lirl(feat_good_specific, p_tr, y_tr, w_tr, cfg)
     th_or = run_lirl(feat_orth,          p_tr, y_tr, w_tr, cfg)
 
-    nirl_m, hist_n = _train(NeuralIRL(cfg['nirl_hidden']),
+    nirl_m, hist_n = _train(StaticND(cfg['nirl_hidden']),
                              p_tr, y_tr, w_tr, 'nirl', cfg,
                              tag=f'Neural IRL s={seed}')
 
-    mdp_m, hist_m = _train(MDPNeuralIRL(cfg['mdp_hidden']),
+    mdp_m, hist_m = _train(HabitND(cfg['mdp_hidden']),
                             p_tr, y_tr, w_tr, 'mdp', cfg,
                             xb_prev_tr=xb_tr,
                             q_prev_tr=qp_tr,
@@ -148,8 +148,17 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
     _lq_tr    = np.log(np.maximum(_q_tr, 1e-6))
     _wf_tr    = build_window_features(_lp_tr, _ly_tr, _lq_tr,
                                       window=_WIRL_W, store_ids=s_tr)
+    
+    # Build test features for evaluation
+    _lp_te    = np.log(np.maximum(p_te, 1e-8))
+    _ly_te    = np.log(np.maximum(y_te, 1e-8))
+    _q_te     = w_te * y_te[:, None] / np.maximum(p_te, 1e-8)
+    _lq_te    = np.log(np.maximum(_q_te, 1e-6))
+    _wf_te    = build_window_features(_lp_te, _ly_te, _lq_te,
+                                      window=_WIRL_W, store_ids=s_te)
+
     wirl_m, hist_wirl = train_window_irl(
-        WindowIRL(n_goods=G, hidden_dim=cfg['nirl_hidden'], window=_WIRL_W),
+        WindowND(n_goods=G, hidden_dim=cfg['nirl_hidden'], window=_WIRL_W),
         _wf_tr, w_tr,
         epochs=cfg['nirl_epochs'], lr=cfg['nirl_lr'],
         batch_size=cfg['nirl_batch'],
@@ -162,13 +171,13 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
 
     # ── Store-FE model variants ────────────────────────────────────────────
     nirl_fe_m, hist_nf = _train(
-        NeuralIRL_FE(cfg['nirl_hidden'], n_stores=N_STORES, emb_dim=STORE_EMB_DIM),
+        StaticND_FE(cfg['nirl_hidden'], n_stores=N_STORES, emb_dim=STORE_EMB_DIM),
         p_tr, y_tr, w_tr, 'nirl', cfg,
         store_idx_tr=s_tr_idx,
         tag=f'Neural-IRL-FE s={seed}')
 
     mdp_fe_m, hist_mf = _train(
-        MDPNeuralIRL_FE(cfg['mdp_hidden'], n_stores=N_STORES, emb_dim=STORE_EMB_DIM),
+        HabitND_FE(cfg['mdp_hidden'], n_stores=N_STORES, emb_dim=STORE_EMB_DIM),
         p_tr, y_tr, w_tr, 'mdp', cfg,
         xb_prev_tr=xb_tr, q_prev_tr=qp_tr,
         store_idx_tr=s_tr_idx,
@@ -180,20 +189,20 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
     print(f'   CF first-stage R²: {_cf_rsq.round(3)}')
 
     nirl_cf_m, hist_ncf = _train(
-        NeuralIRL(cfg['nirl_hidden'], n_cf=G),
+        StaticND(cfg['nirl_hidden'], n_cf=G),
         p_tr, y_tr, w_tr, 'nirl', cfg,
         v_hat_tr=v_hat_tr,
         tag=f'Neural-IRL-CF s={seed}')
 
     mdp_cf_m, hist_mcf = _train(
-        MDPNeuralIRL(cfg['mdp_hidden'], n_cf=G),
+        HabitND(cfg['mdp_hidden'], n_cf=G),
         p_tr, y_tr, w_tr, 'mdp', cfg,
         xb_prev_tr=xb_tr, q_prev_tr=qp_tr,
         v_hat_tr=v_hat_tr,
         tag=f'MDP-IRL-CF s={seed}')
 
     mdp_fe_cf_m, _ = _train(
-        MDPNeuralIRL_FE(cfg['mdp_hidden'], n_stores=N_STORES,
+        HabitND_FE(cfg['mdp_hidden'], n_stores=N_STORES,
                         emb_dim=STORE_EMB_DIM, n_cf=G),
         p_tr, y_tr, w_tr, 'mdp', cfg,
         xb_prev_tr=xb_tr, q_prev_tr=qp_tr,
@@ -205,7 +214,7 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
     perm_idx = np.random.permutation(len(xb_tr))
     xb_placebo_tr = xb_tr[perm_idx]
     qp_placebo_tr = qp_tr[perm_idx]
-    mdp_placebo_m, hist_placebo_m = _train(MDPNeuralIRL(cfg['mdp_hidden']),
+    mdp_placebo_m, hist_placebo_m = _train(HabitND(cfg['mdp_hidden']),
                               p_tr, y_tr, w_tr, 'mdp', cfg,
                               xb_prev_tr=xb_placebo_tr,
                               q_prev_tr=qp_placebo_tr,
@@ -216,6 +225,7 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
         wirl_log_p_hist=_wirl_lp_mean,
         wirl_log_q_hist=_wirl_lq_mean,
         wirl_window=_WIRL_W,
+        wirl_features=_wf_te,
     )
     KW = dict(
         aids=aids_m, blp=blp_m, quaids=quaids_m, series=series_m,
@@ -241,9 +251,9 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
         ('QUAIDS',           'quaids',     {},                                            None),
         ('Series Est.',      'series',     {},                                            None),
         ('Neural Demand (window)',  'window-irl', {},                                            None),
-        ('LDS (Shared)',           'lirl',       {'ff': feat_shared,        'theta': th_sh},   None),
-        ('LDS (GoodSpec)',         'lirl',       {'ff': feat_good_specific, 'theta': th_gs},   None),
-        ('LDS (Orth)',             'lirl',       {'ff': feat_orth,          'theta': th_or},   None),
+        ('Linear Demand (Shared)',           'lirl',       {'ff': feat_shared,        'theta': th_sh},   None),
+        ('Linear Demand (GoodSpec)',         'lirl',       {'ff': feat_good_specific, 'theta': th_gs},   None),
+        ('Linear Demand (Orth)',             'lirl',       {'ff': feat_orth,          'theta': th_or},   None),
         ('Neural Demand (static)', 'nirl',       {},                                            None),
         ('Neural Demand (habit)',  'mdp',        {},                                            _mdp_te),
         ('Neural Demand (placebo)', 'mdp',       {'mdp': mdp_placebo_m},                        _mdp_placebo_te),
@@ -492,8 +502,8 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
         ('quaids',     {},                                    None,                   'QUAIDS'),
         ('series',     {},                                    None,                   'Series Est.'),
         ('window-irl', {},                                    None,                   'Neural Demand (window)'),
-        ('lirl',       {'ff': feat_shared, 'theta': th_sh},  None,                   'LDS (Shared)'),
-        ('lirl',       {'ff': feat_orth,   'theta': th_or},  None,                   'LDS (Orth)'),
+        ('lirl',       {'ff': feat_shared, 'theta': th_sh},  None,                   'Linear Demand (Shared)'),
+        ('lirl',       {'ff': feat_orth,   'theta': th_or},  None,                   'Linear Demand (Orth)'),
         ('nirl',       {},                                    None,                   'Neural Demand (static)'),
         ('mdp',        {},                                    (_xbr_sg, _qpr_sg),     'Neural Demand (habit)'),
         ('mdp',        {},  (_xb_struct_sg, _qp_struct_sg),                          'Neural Demand (habit, struct)'),
@@ -545,7 +555,7 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
             ('quaids',     {},                                  None,                    'QUAIDS'),
             ('series',     {},                                  None,                    'Series Est.'),
             ('window-irl', {},                                  None,                    'Neural Demand (window)'),
-            ('lirl',       {'ff': feat_orth, 'theta': th_or},  None,                    'LDS (Orth)'),
+            ('lirl',       {'ff': feat_orth, 'theta': th_or},  None,                    'Linear Demand (Orth)'),
             ('nirl',       {},                                  None,                    'Neural Demand (static)'),
             ('mdp',        {},  (_xb_struct_g, _qp_struct_g),                           'Neural Demand (habit, struct)'),
             ('mdp',        {},  (_xbr_g, _qpr_g),                                       'Neural Demand (habit)'),
@@ -828,7 +838,7 @@ def _make_figures(agg: dict, splits: dict, cfg: dict) -> None:
         ("g-.",  2.0, None,       "QUAIDS"),
         (":",    2.0, "#FB8C00",  "Series Est."),
         ("--",   2.0, "#6D4C41",  "Neural Demand (window)"),
-        ("c:",   1.8, None,       "LDS (Orth)"),
+        ("c:",   1.8, None,       "Linear Demand (Orth)"),
         ("b-",   2.5, None,       "Neural Demand (static)"),
         ("-",    2.0, TEAL,       "Neural Demand (habit, struct)"),
         ("--",   1.8, "#E91E63",  "Neural Demand (CF)"),

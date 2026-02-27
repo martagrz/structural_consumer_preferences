@@ -1,0 +1,18 @@
+\begin{table}[t]
+\centering
+\caption{Near-integrability diagnostics (``regularity dashboard'').}
+\label{tab:regularity_dashboard}
+\begin{tabular}{lcccccc}
+\toprule
+Model & Test KL & $\mathbb E[D_{\mathrm{sym}}]$ & $\max D_{\mathrm{sym}}$ & $\Pr(\lambda_{\max}(\tilde S)>0)$ & $\mathbb E[D_{\mathrm{curv}}]$ & $\mathbb E[D_{\mathrm{hom}}]$ \\
+\midrule
+Static (no reg) & 0.0338 & 0.0087 & 0.0863 & 0.937 & 0.0002 & 0.0148 \\
+Static (reg) & 0.0318 & 0.0124 & 0.0940 & 0.937 & 0.0001 & 0.0111 \\
+Habit (no reg) & 0.0208 & 0.0051 & 0.0593 & 0.937 & 0.0001 & 0.0066 \\
+Habit (reg) & 0.0269 & 0.0091 & 0.0848 & 0.937 & 0.0002 & 0.0131 \\
+\addlinespace
+FE static (reg) & 0.0339 & 0.0100 & 0.0848 & 0.937 & 0.0003 & 0.0170 \\
+FE habit (reg) & 0.0262 & 0.0076 & 0.0709 & 0.937 & 0.0002 & 0.0134 \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -10,7 +10,7 @@ import os
 def train_dominicks(model, p_tr, y_tr, w_tr, pfx, cfg,
                     xb_prev_tr=None, q_prev_tr=None, tag="",
                     store_idx_tr=None, v_hat_tr=None):
-    """Shared training loop for NeuralIRL / MDPNeuralIRL in Dominicks pipeline.
+    """Shared training loop for StaticND / HabitND in Dominicks pipeline.
     
     Includes caching: if a model with the same 'tag' exists in
     cfg['model_cache_dir'], it is loaded instead of retrained.

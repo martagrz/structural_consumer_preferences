@@ -29,7 +29,7 @@ def train_neural_irl(
     cache_dir=None,
     force_retrain=False,
 ):
-    """Train a NeuralIRL or MDPNeuralIRL model.
+    """Train a StaticND or HabitND model.
 
     Includes caching: if a model with the same 'tag' exists in
     cache_dir, it is loaded instead of retrained.
@@ -67,9 +67,7 @@ def train_neural_irl(
     cf_mode  = (v_hat_data is not None) and hasattr(model, 'n_cf') and (model.n_cf > 0)
 
     model = model.to(device)
-    # Adam gives per-parameter adaptive updates; under SGD + clip_grad_norm
-    # scalar parameters (e.g. log_delta) receive near-zero effective
-    # step sizes and fail to move.  Adam fixes this for all models.
+    # Adam gives stable updates across dense neural parameters.
     optimiser = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
     N = len(income)
     slut_start = int(epochs * slut_start_frac)

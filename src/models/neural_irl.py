@@ -8,8 +8,8 @@ import torch.nn as nn
 #  Base model (no store effects)
 # ─────────────────────────────────────────────────────────────────────────────
 
-class NeuralIRL(nn.Module):
-    name = "Neural IRL"
+class StaticND(nn.Module):
+    name = "Neural Demand (static)"
 
     def __init__(self, h=256, n_goods=3, hidden_dim=None, n_cf=0):
         """
@@ -78,7 +78,7 @@ class NeuralIRL(nn.Module):
 #  Store-fixed-effects variant (Dominick's pipeline only)
 # ─────────────────────────────────────────────────────────────────────────────
 
-class NeuralIRL_FE(nn.Module):
+class StaticND_FE(nn.Module):
     """Neural IRL with store fixed effects via learned dense embeddings.
 
     Each store gets a learnable embedding vector of dimension *emb_dim*.
@@ -93,7 +93,7 @@ class NeuralIRL_FE(nn.Module):
     emb_dim   : int — embedding dimension (default 8; suitable for ~100 stores).
     n_cf      : int — number of CF residuals appended to state (0 = disabled).
     """
-    name = "Neural IRL (FE)"
+    name = "Neural Demand (static, FE)"
 
     def __init__(self, h: int = 256, n_goods: int = 3, hidden_dim: int = None,
                  n_stores: int = 100, emb_dim: int = 8, n_cf: int = 0):

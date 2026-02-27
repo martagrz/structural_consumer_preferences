@@ -12,17 +12,16 @@ from .linear_features import (
     features_shared,
 )
 from .linear_irl import predict_linear_irl, run_linear_irl
-from .mdp_neural_irl import MDPNeuralIRL
+from .mdp_neural_irl import HabitND
 from .mdp_e2e_irl import (
-    MDPNeuralIRL_E2E,
-    WindowIRL,
+    WindowND,
     compute_xbar_e2e,
     build_window_features,
     train_mdp_e2e,
     train_window_irl,
 )
-from .mixtures import ContinuousVariationalMixture
-from .neural_irl import NeuralIRL
+
+from .neural_irl import StaticND
 from .quasilinear_consumer import QuasilinearConsumer
 from .simulation_train import train_neural_irl
 from .stone_geary_consumer import StoneGearyConsumer

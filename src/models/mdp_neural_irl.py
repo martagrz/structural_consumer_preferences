@@ -5,8 +5,8 @@ import torch
 import torch.nn as nn
 
 
-class MDPNeuralIRL(nn.Module):
-    name = "MDP Neural IRL"
+class HabitND(nn.Module):
+    name = "Neural Demand (habit)"
 
     def __init__(self, h=256, n_goods=3, hidden_dim=None, delta_init=0.5, n_cf=0):
         """
@@ -17,9 +17,7 @@ class MDPNeuralIRL(nn.Module):
         n_goods : int
             Number of goods in the demand system.
         delta_init : float in (0, 1)
-            Starting value for the habit-decay parameter δ.  The model
-            parameterises δ = sigmoid(log_delta) so that it is always in
-            (0, 1) and is learned end-to-end during training.
+            Fixed habit-decay parameter δ used throughout training/evaluation.
         n_cf : int
             Number of control-function residuals appended to the state.
             Set to n_goods when using the CF endogeneity correction;
@@ -38,11 +36,9 @@ class MDPNeuralIRL(nn.Module):
             nn.SiLU(),
             nn.Linear(hdim // 2, n_goods),
         )
-        # Learnable habit-decay δ = sigmoid(log_delta), initialised at delta_init
+        # Fixed habit-decay parameter (no learning).
         delta_init = float(np.clip(delta_init, 1e-3, 1.0 - 1e-3))
-        self.log_delta = nn.Parameter(
-            torch.tensor(np.log(delta_init / (1.0 - delta_init)), dtype=torch.float32)
-        )
+        self.register_buffer("_delta", torch.tensor(delta_init, dtype=torch.float32))
 
         for m in self.net:
             if isinstance(m, nn.Linear):
@@ -60,8 +56,8 @@ class MDPNeuralIRL(nn.Module):
 
     @property
     def delta(self):
-        """Habit-decay rate δ ∈ (0, 1), learned via sigmoid re-parameterisation."""
-        return torch.sigmoid(self.log_delta)
+        """Fixed habit-decay rate δ ∈ (0, 1)."""
+        return self._delta
 
     # ------------------------------------------------------------------ #
     #  Forward pass                                                        #
@@ -86,7 +82,7 @@ class MDPNeuralIRL(nn.Module):
 
             log_x̄_t^eff = δ · log_xb_prev + (1 − δ) · log_q_prev
 
-        i.e. a convex combination in log-space with learnable δ.
+        i.e. a convex combination in log-space with fixed δ.
         """
         delta = self.delta
         xb_input = delta * log_xb_prev + (1.0 - delta) * log_q_prev
@@ -128,10 +124,10 @@ class MDPNeuralIRL(nn.Module):
 #  Store-fixed-effects variant (Dominick's pipeline only)
 # ─────────────────────────────────────────────────────────────────────────────
 
-class MDPNeuralIRL_FE(nn.Module):
+class HabitND_FE(nn.Module):
     """MDP Neural IRL with store fixed effects via learned dense embeddings.
 
-    Same habit-formation model as MDPNeuralIRL but with an additional
+    Same habit-formation model as HabitND but with an additional
     store embedding concatenated to the (log_p, log_y, habit_input) state.
 
     Parameters
@@ -141,7 +137,7 @@ class MDPNeuralIRL_FE(nn.Module):
     delta_init : float — initial habit-decay δ ∈ (0, 1).
     n_cf      : int — number of CF residuals appended to state (0 = disabled).
     """
-    name = "MDP IRL (FE)"
+    name = "Neural Demand (habit, FE)"
 
     def __init__(self, h: int = 256, n_goods: int = 3, hidden_dim: int = None,
                  delta_init: float = 0.5, n_stores: int = 100, emb_dim: int = 8,
@@ -162,9 +158,7 @@ class MDPNeuralIRL_FE(nn.Module):
             nn.Linear(hdim // 2, n_goods),
         )
         delta_init = float(np.clip(delta_init, 1e-3, 1.0 - 1e-3))
-        self.log_delta = nn.Parameter(
-            torch.tensor(np.log(delta_init / (1.0 - delta_init)), dtype=torch.float32)
-        )
+        self.register_buffer("_delta", torch.tensor(delta_init, dtype=torch.float32))
         for m in self.net:
             if isinstance(m, nn.Linear):
                 nn.init.kaiming_normal_(m.weight, nonlinearity="relu")
@@ -178,7 +172,7 @@ class MDPNeuralIRL_FE(nn.Module):
 
     @property
     def delta(self):
-        return torch.sigmoid(self.log_delta)
+        return self._delta
 
     def forward(self, log_p, log_y, log_xb_prev, log_q_prev, store_idx, v_hat=None):
         """

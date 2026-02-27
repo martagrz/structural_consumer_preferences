@@ -1,6 +1,6 @@
 Model,RMSE_mean,RMSE_std,KL_mean,KL_std,Reduction,n_runs
-LA-AIDS,0.070687,0.0,0.023115,0.0,baseline,5
-Neural Demand (static),0.065214,0.00083,0.02018,0.000496,7.7%,5
-Neural Demand (habit),0.048354,9.9e-05,0.010868,4.3e-05,31.6%,5
-Neural Demand (CF),0.06835,0.00067,0.021455,0.000437,3.3%,5
-"Neural Demand (habit, CF)",0.048355,0.000102,0.010869,5.1e-05,31.6%,5
+LA-AIDS,0.070687,0.0,0.023115,0.0,baseline,2
+Neural Demand (static),0.087776,0.001965,0.034972,0.001725,-24.2%,2
+Neural Demand (habit),0.074656,0.000235,0.025084,0.000835,-5.6%,2
+Neural Demand (CF),0.08603,0.000729,0.033603,0.000377,-21.7%,2
+"Neural Demand (habit, CF)",0.07477,0.004382,0.025359,0.003343,-5.8%,2

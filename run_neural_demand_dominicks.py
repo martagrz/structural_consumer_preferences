@@ -138,32 +138,32 @@ def _parse_args():
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _run_exp01(splits, cfg):
-    from experiments.neural_demand.dominicks.exp01_predictive_accuracy import run
+    from experiments.dominicks.exp01_predictive_accuracy import run
     return run(splits, cfg)
 
 
 def _run_exp02(splits, cfg):
-    from experiments.neural_demand.dominicks.exp02_elasticities import run
+    from experiments.dominicks.exp02_elasticities import run
     return run(splits, cfg)
 
 
 def _run_exp03(splits, cfg):
-    from experiments.neural_demand.dominicks.exp03_welfare import run
+    from experiments.dominicks.exp03_welfare import run
     return run(splits, cfg)
 
 
 def _run_exp04(splits, cfg):
-    from experiments.neural_demand.dominicks.exp04_demand_curves import run
+    from experiments.dominicks.exp04_demand_curves import run
     return run(splits, cfg)
 
 
 def _run_exp05(splits, cfg):
-    from experiments.neural_demand.dominicks.exp05_delta_identification import run
+    from experiments.dominicks.exp05_delta_identification import run
     return run(splits, cfg)
 
 
 def _run_exp06(splits, cfg):
-    from experiments.neural_demand.dominicks.exp06_cf_decomposition import run
+    from experiments.dominicks.exp06_cf_decomposition import run
     return run(splits, cfg)
 
 
@@ -220,12 +220,12 @@ def _run_exp07(splits, cfg):
 
 
 def _run_exp08(splits, cfg):
-    from experiments.neural_demand.dominicks.exp07_first_stage import run
+    from experiments.dominicks.exp07_first_stage import run
     return run(splits, cfg)
 
 
 def _run_exp09(splits, cfg):
-    from experiments.neural_demand.dominicks.exp09_regularity_dashboard import run
+    from experiments.dominicks.exp09_regularity_dashboard import run
     return run(splits, cfg)
 
 
