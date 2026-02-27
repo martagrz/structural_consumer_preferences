@@ -149,12 +149,17 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
     # Exclude FE models from welfare to keep scope manageable
     cv_models = [nm for nm in ALL_MODEL_NAMES if "FE" not in nm]
     cv = {}
+    
+    # Scale factor: Model units are "hundreds of dollars" (income/100).
+    # We multiply by 100 to report CV in real dollars ($).
+    SCALE_TO_DOLLARS = 100.0
+    
     for nm in cv_models:
         try:
             v = compensating_variation(nm, p0w, p1w, y_mn, cfg,
                                        xb_prev0=_xb(nm), q_prev0=qp_mn,
                                        **{**KW, **_kw(nm)})
-            cv[nm] = float(v)
+            cv[nm] = float(v) * SCALE_TO_DOLLARS
         except Exception as exc:
             print(f"    Warning: CV {nm} failed — {exc}")
             cv[nm] = np.nan
@@ -172,7 +177,7 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
                 v = compensating_variation(nm, p_mn, p1_tmp, y_mn, cfg,
                                            xb_prev0=_xb(nm), q_prev0=qp_mn,
                                            **KW)
-                cv_by_pct[pct][nm] = float(v)
+                cv_by_pct[pct][nm] = float(v) * SCALE_TO_DOLLARS
             except Exception:
                 cv_by_pct[pct][nm] = np.nan
 

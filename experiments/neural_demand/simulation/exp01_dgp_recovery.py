@@ -122,11 +122,11 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
 
     # ── DGP catalogue ─────────────────────────────────────────────────────────
     DGPs = {
-        "CES":         CESConsumer(),
-        "Quasilinear": QuasilinearConsumer(),
-        "Leontief":    LeontiefConsumer(),
-        "Stone–Geary": StoneGearyConsumer(),
-        "Habit":       HabitFormationConsumer(),
+        # "CES":         CESConsumer(),
+        # "Quasilinear": QuasilinearConsumer(),
+        # "Leontief":    LeontiefConsumer(),
+        # "Stone–Geary": StoneGearyConsumer(),
+        # "Habit":       HabitFormationConsumer(),
         "Endogenous CES": CESConsumer(),  # Placeholder, handled specially in loop
     }
 
@@ -227,11 +227,14 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
         theta_gs = run_linear_irl(F_gs, curr_w_train, lr=0.05, epochs=3000, l2=1e-4)
         theta_or = run_linear_irl(F_or, curr_w_train, lr=0.05, epochs=3000, l2=1e-4)
 
+        # Adjust LR for Endogenous CES (harder landscape)
+        LR = 5e-3 if dgp_name == "Endogenous CES" else 5e-4
+
         # ── Neural Demand (static) ────────────────────────────────────────────
         nds_m = NeuralIRL(n_goods=3, hidden_dim=HIDDEN)
         nds_m, hist_nds_static = train_neural_irl(
             nds_m, curr_p_pre, income, curr_w_train,
-            epochs=EPOCHS, lr=5e-4, batch_size=256,
+            epochs=EPOCHS, lr=LR, batch_size=256,
             lam_mono=0.3, lam_slut=0.1, slut_start_frac=0.25,
             device=DEVICE, verbose=verbose,
             tag=f"nds-static-{dgp_name}-s{seed}",
@@ -243,7 +246,7 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
         nds_cf_m = NeuralIRL(n_goods=3, hidden_dim=HIDDEN, n_cf=3)
         nds_cf_m, hist_nds_cf = train_neural_irl(
             nds_cf_m, curr_p_pre, income, curr_w_train,
-            epochs=EPOCHS, lr=5e-4, batch_size=256,
+            epochs=EPOCHS, lr=LR, batch_size=256,
             lam_mono=0.3, lam_slut=0.1, slut_start_frac=0.25,
             v_hat_data=v_hat_tr,
             device=DEVICE, verbose=False,
@@ -263,7 +266,7 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
                 curr_p_pre, income, curr_w_train, lq_tr,
                 p_val, y_val, w_val, lq_v,
                 delta_grid=DELTA_GRID,
-                epochs=EPOCHS, lr=5e-4, batch_size=256,
+                epochs=EPOCHS, lr=LR, batch_size=256,
                 lam_mono=0.3, lam_slut=0.1,
                 hidden_dim=HIDDEN, device=DEVICE,
                 tag=f"nd-hab-{dgp_name}-s{seed}",
@@ -310,7 +313,7 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
         try:
             nds_hab_cf_m, hist_nds_hab_cf = train_neural_irl(
                 nds_hab_cf_m, curr_p_pre, income, curr_w_train,
-                epochs=EPOCHS, lr=5e-4, batch_size=256,
+                epochs=EPOCHS, lr=LR, batch_size=256,
                 lam_mono=0.3, lam_slut=0.1, slut_start_frac=0.25,
                 xb_prev_data=np.exp(xb_ewma),
                 q_prev_data=np.exp(q_prev_tr),

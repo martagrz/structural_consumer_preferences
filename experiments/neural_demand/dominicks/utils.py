@@ -48,7 +48,7 @@ from experiments.dominicks.utils import (
 MODEL_NAMES_STATIC = [
     "LA-AIDS", "BLP (IV)", "QUAIDS", "Series Est.",
     "LDS (Shared)", "LDS (GoodSpec)", "LDS (Orth)",
-    "Neural Demand (static)",
+    "Neural Demand (static)", "Neural Demand (window)",
 ]
 MODEL_NAMES_HABIT = MODEL_NAMES_STATIC + ["Neural Demand (habit)"]
 MODEL_NAMES_FE    = MODEL_NAMES_HABIT  + [
@@ -69,6 +69,7 @@ _SPEC_MAP = {
     "LDS (GoodSpec)":                "lirl",
     "LDS (Orth)":                    "lirl",
     "Neural Demand (static)":        "nirl",
+    "Neural Demand (window)":        "window-irl",
     "Neural Demand (habit)":         "mdp-e2e",
     "Neural Demand (FE)":            "nirl-fe",
     "Neural Demand (habit, FE)":     "mdp-e2e-fe",
@@ -89,6 +90,7 @@ STYLE = {
     "LDS (GoodSpec)":             dict(color="#00ACC1", ls=":",  lw=1.5),
     "LDS (Orth)":                 dict(color="#0277BD", ls=":",  lw=1.5),
     "Neural Demand (static)":     dict(color="#1E88E5", ls="-",  lw=2.5),
+    "Neural Demand (window)":     dict(color="#5E35B1", ls="-",  lw=2.0),
     "Neural Demand (habit)":      dict(color="#00897B", ls="-",  lw=2.5),
     "Neural Demand (FE)":         dict(color="#1565C0", ls="-",  lw=2.0),
     "Neural Demand (habit, FE)":  dict(color="#004D40", ls="-",  lw=2.0),

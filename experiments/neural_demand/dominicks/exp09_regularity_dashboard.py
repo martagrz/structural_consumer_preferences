@@ -286,10 +286,15 @@ def run(splits, cfg):
         # We need to ensure unique tags for no-reg to avoid loading reg models from cache
         # The 'name' variable already distinguishes them ("Static (no reg)" vs "Static (reg)")
         
+        # Filter train_kw to remove init-only args (n_stores, emb_dim)
+        # train_dominicks only accepts specific kwargs
+        actual_train_kw = {k: v for k, v in train_kw.items() 
+                           if k not in ['n_stores', 'emb_dim']}
+
         # Note: train_dominicks (_train) uses cfg for hyperparameters.
         # We pass the specific cfg (reg or noreg) to it.
         model, _ = _train(model, p_tr, y_tr, w_tr, pfx, run_cfg, 
-                          tag=tag, **train_kw)
+                          tag=tag, **actual_train_kw)
         
         # Evaluate KL
         # Prepare eval kwargs
